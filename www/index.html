@@ -1561,17 +1561,29 @@ $("btnPayOk").onclick=async()=>{
 };
 let pendingOrder=null,pollTimer=null;
 function showQr(codeUrl,type){
-  const sheet=$("maskPay").querySelector(".sheet");
-  sheet.innerHTML=`<div class="tt" style="margin-bottom:4px">扫码支付</div>
-    <div class="st" style="margin-bottom:10px">微信扫码完成支付 · ¥${({once:"9.9",month:"49",year:"89"})[type]}</div>
-    <div id="qrBox" style="text-align:center;padding:10px;background:#fff;border-radius:12px;margin-bottom:8px">二维码生成中…</div>
-    <div class="pay-note">支付完成后自动解锁 · 无需手动操作</div>`;
+  /* 关闭付费面板（之前卡"下单中"就是这个没关） */
+  hidePayMask();
+  /* 独立全屏遮罩（不走付费面板的 sheet） */
+  const old=document.getElementById("qrMask");if(old)old.remove();
+  const box=document.createElement("div");
+  box.id="qrMask";
+  box.style.cssText="position:fixed;inset:0;z-index:998;background:rgba(16,18,22,.97);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;color:#fff;box-sizing:border-box";
+  box.innerHTML=`
+    <div style="position:absolute;top:14px;left:14px;right:14px;display:flex;justify-content:space-between;align-items:center;z-index:2">
+      <span style="font-size:13px;opacity:.7">微信扫码支付</span>
+      <span id="qrClose" style="padding:7px 14px;background:rgba(255,255,255,.12);border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">✕ 取消</span>
+    </div>
+    <div id="qrBox" style="background:#fff;padding:18px;border-radius:16px;margin-bottom:14px;display:flex;align-items:center;justify-content:center"></div>
+    <div style="font-size:22px;font-weight:800;margin-bottom:4px">¥${({once:"9.9",month:"49",year:"89"})[type]}</div>
+    <div id="qrStatus" style="font-size:13px;opacity:.65">等待扫码支付…</div>
+    <div style="font-size:11px;opacity:.4;margin-top:14px">支付完成后自动解锁 · 无需操作</div>
+  `;
+  document.body.appendChild(box);
   try{
-    if(window.QRCode)new QRCode(document.getElementById("qrBox"),{text:codeUrl,width:188,height:188});
-    else document.getElementById("qrBox").innerHTML=`<div style="font-size:11px;word-break:break-all;color:#333">${codeUrl}</div>`;
-  }catch(e){
-    document.getElementById("qrBox").innerHTML=`<div style="font-size:11px;word-break:break-all;color:#333">${codeUrl}</div>`;
-  }
+    if(window.QRCode)new QRCode(box.querySelector("#qrBox"),{text:codeUrl,width:220,height:220,colorDark:"#000",colorLight:"#fff"});
+    else box.querySelector("#qrBox").innerHTML=`<div style="font-size:11px;word-break:break-all;color:#333;padding:10px;max-width:260px">${codeUrl}</div>`;
+  }catch(e){box.querySelector("#qrBox").innerHTML=`<div style="font-size:11px;word-break:break-all;color:#333;padding:10px;max-width:260px">${codeUrl}</div>`;}
+  box.querySelector("#qrClose").onclick=()=>{box.remove();clearInterval(pollTimer);};
   startPolling();
 }
 async function startPolling(){
@@ -1585,6 +1597,7 @@ async function startPolling(){
       if(data.ok&&data.paid){
         clearInterval(pollTimer);
         const nm={once:"单次解锁",month:"包月会员",year:"体验包年"}[pendingOrder.type];
+        const qrMask=document.getElementById("qrMask");if(qrMask)qrMask.remove();
         payFor(pendingOrder.type);hidePayMask();toast("✅ 支付成功 · 已开通"+nm);
         if(pendingOrder.payNext){const fn=pendingOrder.payNext;pendingOrder.payNext=null;setTimeout(fn,200);}
         pendingOrder=null;
@@ -1783,17 +1796,16 @@ $("chatInput").addEventListener("keydown",e=>{if(e.key==="Enter"){chatSend($("ch
 async function exportImage(){
   const m=docModel();
   toast("正在生成简历图片…");
-  /* 滚动容器：内容完整高度，视口 1123，逐页截取（避免超大 canvas 超设备限制） */
-  const wrap=document.createElement("div");
-  wrap.style.cssText="position:fixed;left:-99999px;top:0;width:794px;height:1123px;overflow:auto;scrollbar-width:none;";
-  wrap.innerHTML=htmlOf(m,curTpl);
-  document.body.appendChild(wrap);
-  const a4=wrap.querySelector(".a4");
-  /* 测量真实内容高度（不缩放） */
+  /* 外层固定 794×1123 + overflow hidden；内层 A4 完整 finalH 高；
+     每页用 marginTop 偏移 A4 让对应段落入视口（box 模型偏移比 transform 稳定，不触发 html2canvas 渲染坑） */
+  const outer=document.createElement("div");
+  outer.style.cssText="position:fixed;left:-99999px;top:0;width:794px;height:1123px;overflow:hidden;";
+  outer.innerHTML=htmlOf(m,curTpl);
+  document.body.appendChild(outer);
+  const a4=outer.querySelector(".a4");
   a4.style.transform="none";a4.style.fontSize="";a4.style.minHeight="auto";a4.style.paddingBottom="0";
   void a4.offsetHeight;
   const actualH=a4.scrollHeight;
-  /* 少内容：font-size 0.85-1.0 + padding 撑底；多内容自然分页 */
   let ratio=Math.min(1.0,Math.max(0.85,1033/actualH));
   a4.style.fontSize=(13*ratio).toFixed(2)+"px";
   void a4.offsetHeight;
@@ -1801,15 +1813,17 @@ async function exportImage(){
   a4.style.paddingBottom=Math.max(0,1123-h2)+"px";
   const finalH=Math.max(1123,h2+Math.max(0,1123-h2));
   a4.style.minHeight=finalH+"px";
-  /* 逐页截取 */
+  /* 逐页截取：marginTop 偏移 A4 */
   const pageH=1123;
   const pages=Math.max(1,Math.ceil(finalH/pageH));
   const urls=[];
   for(let i=0;i<pages;i++){
-    const c=await html2canvas(wrap,{scale:2,width:794,height:pageH,windowWidth:794,useCORS:true,scrollY:i*pageH,windowHeight:pageH,backgroundColor:curTpl==="dark"?"#16181d":"#ffffff"});
+    a4.style.marginTop=(-i*pageH)+"px";
+    void a4.offsetHeight;
+    const c=await html2canvas(outer,{scale:2,width:794,height:pageH,windowWidth:794,useCORS:true,backgroundColor:curTpl==="dark"?"#16181d":"#ffffff"});
     urls.push(c.toDataURL("image/png"));
   }
-  document.body.removeChild(wrap);
+  document.body.removeChild(outer);
   showFullPreview(urls,"png");
   toast("共 "+pages+" 页 · 长按图片或点「保存图片」");
 }
@@ -1854,7 +1868,7 @@ function triggerDownload(blob,filename){
   a.href=url;a.download=filename;
   document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),10000);
-  toast(filename+" 已开始下载 · 通知栏查看");
+  toast("✅ "+filename+" 已发送到下载队列 · 完成后可在「文件管理 / Download/简历大师/」打开");
 }
 function exportPDF(){
   const m=docModel();
@@ -1909,51 +1923,53 @@ $("btnDoc").onclick=()=>gateExport(exportWord);
 /* ====================== 预览内编辑模式（双击文字直接改 · 保存回写） ====================== */
 let editZoom=1;
 function enterEditMode(){
-  const wrap=$("previewWrap");if(!wrap)return;
+  const old=document.getElementById("editMask");if(old)old.remove();
   const m=docModel();
-  const box=document.createElement("div");
-  box.id="editMode";
-  box.innerHTML=`
-    <div class="edit-toolbar">
+  /* 独立全屏 fixed 遮罩（脱离 pageExport 布局，无导出按钮/tab 干扰） */
+  const mask=document.createElement("div");
+  mask.id="editMask";
+  mask.style.cssText="position:fixed;inset:0;z-index:9990;background:#525659;display:flex;flex-direction:column;";
+  mask.innerHTML=`
+    <div class="edit-toolbar" style="position:relative;flex:0 0 auto;z-index:10">
       <span style="font-size:12px;font-weight:800;flex:1">✏️ 点击文字直接编辑 · 改完点保存</span>
-      <span class="et-btn" id="edZoomOut">−</span><span id="edZoomPct" style="font-size:12px;font-weight:700;width:42px;text-align:center">100%</span><span class="et-btn" id="edZoomIn">＋</span>
-      <span class="et-btn et-green" id="edSave">💾 保存修改</span>
-      <span class="et-btn" id="edForm">📝 表单</span>
+      <span class="et-btn" id="edZoomOut">−</span><span id="edZoomPct" style="font-size:12px;font-weight:700;width:44px;text-align:center">100%</span><span class="et-btn" id="edZoomIn">＋</span>
+      <span class="et-btn et-green" id="edSave">💾 保存</span>
+      <span class="et-btn" id="edForm">📝</span>
       <span class="et-btn" id="edCancel">✕</span>
+    </div>
+    <div id="editScroll" style="flex:1;overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:16px 8px;box-sizing:border-box;-webkit-overflow-scrolling:touch">
+      <div id="editA4Wrap" class="edit-a4wrap"></div>
     </div>`;
-  const a4wrap=document.createElement("div");
-  a4wrap.className="edit-a4wrap";
+  document.body.appendChild(mask);
+  const a4wrap=mask.querySelector("#editA4Wrap");
   a4wrap.innerHTML=htmlOf(m,curTpl);
   const a4=a4wrap.querySelector(".a4");
   a4.setAttribute("contenteditable","true");
-  box.appendChild(a4wrap);
-  wrap.innerHTML="";
-  wrap.style.display="flex";wrap.style.flexDirection="column";wrap.style.alignItems="center";wrap.style.padding="12px 0";
-  wrap.appendChild(box);
-  /* 缩放 */
+  a4.style.boxShadow="0 12px 50px rgba(0,0,0,.5)";
+  /* 默认缩放 = 屏宽 / A4 宽（让A4完整可见），用户可放大看细节 */
   const applyZoom=()=>{
-    editZoom=Math.min(1.8,Math.max(0.6,editZoom));
+    editZoom=Math.min(1.8,Math.max(0.3,editZoom));
     a4wrap.style.transform=`scale(${editZoom})`;
-    $("edZoomPct").textContent=Math.round(editZoom*100)+"%";
-    a4wrap.style.marginBottom=-(1-editZoom)*900+"px";
+    mask.querySelector("#edZoomPct").textContent=Math.round(editZoom*100)+"%";
+    a4wrap.style.marginBottom=-(1-editZoom)*1100+"px";
   };
-  $("edZoomIn").onclick=()=>{editZoom+=0.15;applyZoom();};
-  $("edZoomOut").onclick=()=>{editZoom-=0.15;applyZoom();};
+  const initZoom=Math.max(0.4,(Math.min(window.innerWidth-32,820)/794));
+  editZoom=initZoom;
   applyZoom();
+  mask.querySelector("#edZoomIn").onclick=()=>{editZoom+=0.15;applyZoom();};
+  mask.querySelector("#edZoomOut").onclick=()=>{editZoom-=0.15;applyZoom();};
   /* 保存：按 data-sec 提取编辑后的内容回写 profile */
-  $("edSave").onclick=()=>{
+  mask.querySelector("#edSave").onclick=()=>{
     const p=collectEditedA4(a4);
     profile=p;syncFormFromProfile();scheduleRenderPreview();saveDraft();
     exitEditMode();
     toast("✅ 已保存修改 · 简历已更新");
   };
-  $("edCancel").onclick=exitEditMode;
-  $("edForm").onclick=()=>{exitEditMode();goTab("pageWrite");};
+  mask.querySelector("#edCancel").onclick=exitEditMode;
+  mask.querySelector("#edForm").onclick=()=>{exitEditMode();goTab("pageWrite");};
 }
 function exitEditMode(){
-  const w=$("previewWrap");if(!w)return;
-  w.style.cssText="";
-  const em=document.getElementById("editMode");if(em)em.remove();
+  const m=document.getElementById("editMask");if(m)m.remove();
   scheduleRenderPreview();
 }
 function collectEditedA4(a4){
