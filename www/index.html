@@ -16,6 +16,8 @@ html,body{height:100%;background:#e9ecf2;font-family:-apple-system,"PingFang SC"
 @media(min-width:480px){.phone{height:90vh;margin:5vh auto;border-radius:24px;max-height:none}}
 @media(max-width:440px){.phone{width:100%;border-radius:0;height:100vh;max-height:none}}
 .statusbar{height:30px;background:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 18px;font-size:12px;font-weight:600;color:#222;flex:0 0 auto}
+/* 真机（Capacitor）：edge-to-edge 安全区，内容避开挖孔/刘海，状态栏透明融入 */
+.native-app .phone{padding-top:env(safe-area-inset-top,0px);height:100dvh}
 .screen{position:relative;flex:1;overflow:hidden}
 .page{position:absolute;inset:0;display:none;flex-direction:column;background:#f5f6fa}
 .page.on{display:flex}
@@ -1756,36 +1758,77 @@ $("chatSend").onclick=()=>{chatSend($("chatInput").value);$("chatInput").value="
 $("chatInput").addEventListener("keydown",e=>{if(e.key==="Enter"){chatSend($("chatInput").value);$("chatInput").value="";}});
 
 /* ====================== 导出 ====================== */
-function exportImage(){
+async function exportImage(){
   const m=docModel();
-  /* clone 到 body 隐藏位截 A4（scale:2 = retina 高清；自适应缩放后填满/可多页） */
-  const tmp=document.createElement("div");
-  tmp.style.cssText="position:fixed;left:-99999px;top:0;width:794px;margin:0;";
-  tmp.innerHTML=htmlOf(m,curTpl);
-  document.body.appendChild(tmp);
-  const a4=tmp.querySelector(".a4");
-  const fit=autoFitA4(a4);
-  const w=794,h=fit.finalH;
-  html2canvas(a4,{scale:2,width:w,height:h,windowWidth:w,backgroundColor:curTpl==="dark"?"#16181d":"#ffffff",useCORS:true}).then(canvas=>{
-    document.body.removeChild(tmp);
-    /* 全屏弹出图片 → 用户长按保存（真机 WebView 不支持直接下载文件） */
-    showFullPreview(canvas.toDataURL("image/png"),"png");
-    toast("长按图片即可保存到手机");
-  }).catch(e=>{try{document.body.removeChild(tmp);}catch(_){}toast("导出失败："+e.message);});
+  toast("正在生成简历图片…");
+  /* 滚动容器：内容完整高度，视口 1123，逐页截取（避免超大 canvas 超设备限制） */
+  const wrap=document.createElement("div");
+  wrap.style.cssText="position:fixed;left:-99999px;top:0;width:794px;height:1123px;overflow:auto;scrollbar-width:none;";
+  wrap.innerHTML=htmlOf(m,curTpl);
+  document.body.appendChild(wrap);
+  const a4=wrap.querySelector(".a4");
+  /* 测量真实内容高度（不缩放） */
+  a4.style.transform="none";a4.style.fontSize="";a4.style.minHeight="auto";a4.style.paddingBottom="0";
+  void a4.offsetHeight;
+  const actualH=a4.scrollHeight;
+  /* 少内容：font-size 0.85-1.0 + padding 撑底；多内容自然分页 */
+  let ratio=Math.min(1.0,Math.max(0.85,1033/actualH));
+  a4.style.fontSize=(13*ratio).toFixed(2)+"px";
+  void a4.offsetHeight;
+  const h2=a4.scrollHeight;
+  a4.style.paddingBottom=Math.max(0,1123-h2)+"px";
+  const finalH=Math.max(1123,h2+Math.max(0,1123-h2));
+  a4.style.minHeight=finalH+"px";
+  /* 逐页截取 */
+  const pageH=1123;
+  const pages=Math.max(1,Math.ceil(finalH/pageH));
+  const urls=[];
+  for(let i=0;i<pages;i++){
+    const c=await html2canvas(wrap,{scale:2,width:794,height:pageH,windowWidth:794,useCORS:true,scrollY:i*pageH,windowHeight:pageH,backgroundColor:curTpl==="dark"?"#16181d":"#ffffff"});
+    urls.push(c.toDataURL("image/png"));
+  }
+  document.body.removeChild(wrap);
+  showFullPreview(urls,"png");
+  toast("共 "+pages+" 页 · 长按图片或点「保存图片」");
 }
-/* 全屏预览（PNG 长按保存 / PDF-HTML 滑动查看） */
-function showFullPreview(url,type){
+/* 全屏预览（PNG 多页长按/保存 / PDF-HTML 滑动查看） */
+function showFullPreview(urls,type){
   const old=document.getElementById("fullPreview");if(old)old.remove();
+  const list=Array.isArray(urls)?urls:[urls];
   const box=document.createElement("div");
   box.id="fullPreview";
-  box.style.cssText="position:fixed;inset:0;z-index:999;background:#101216;display:flex;flex-direction:column;align-items:center;overflow:auto";
-  const inner=type==="html"
-    ? `<iframe src="${url}" style="width:100%;flex:1;border:none;background:#fff"></iframe>`
-    : `<img src="${url}" style="max-width:100%;height:auto;margin:16px 0;box-shadow:0 4px 24px rgba(0,0,0,.5)" alt="简历预览">`;
+  box.style.cssText="position:fixed;inset:0;z-index:999;background:#101216;display:flex;flex-direction:column;overflow:auto";
+  const bodyHtml=type==="html"
+    ? `<iframe src="${list[0]}" style="width:100%;flex:1;border:none;background:#fff"></iframe>`
+    : list.map(u=>`<img src="${u}" style="max-width:100%;height:auto;margin:12px 0;box-shadow:0 4px 24px rgba(0,0,0,.5)">`).join("");
   box.innerHTML=`<div style="position:sticky;top:0;width:100%;background:rgba(16,18,22,.92);color:#fff;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;font-size:13px;z-index:10;box-sizing:border-box">
-    <span>${type==="html"?"滑动查看简历排版 · 保存请用 Word/PNG":"👇 长按图片保存到手机"}</span><span id="fpClose" style="cursor:pointer;padding:6px 14px;background:#6C5CE7;border-radius:8px;font-weight:700">完成</span></div>${inner}`;
+    <span>${type==="html"?"滑动查看简历排版 · 保存请用 Word/PNG":"长按图片保存 · 共 "+list.length+" 页"}</span>
+    <span style="display:flex;gap:8px">
+      ${type==="png"?'<span id="fpSave" style="cursor:pointer;padding:6px 14px;background:#2ea86b;border-radius:8px;font-weight:700">保存图片</span>':''}
+      <span id="fpClose" style="cursor:pointer;padding:6px 14px;background:#6C5CE7;border-radius:8px;font-weight:700">完成</span>
+    </span></div>${bodyHtml}`;
   document.body.appendChild(box);
   box.querySelector("#fpClose").onclick=()=>box.remove();
+  const saveBtn=box.querySelector("#fpSave");
+  if(saveBtn){
+    saveBtn.onclick=()=>{
+      list.forEach((u,idx)=>{
+        const a=document.createElement("a");
+        a.href=u;a.download=`简历_${curTpl}_${list.length>1?"第"+(idx+1)+"页_":""}.png`;
+        document.body.appendChild(a);a.click();a.remove();
+      });
+      toast("已开始保存 "+list.length+" 张 · 下拉通知栏查看");
+    };
+  }
+}
+/* 触发下载：a[download] + blob/dataURL（Android 真机由原生 setDownloadListener 接管存到 Download 目录） */
+function triggerDownload(blob,filename){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download=filename;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),10000);
+  toast(filename+" 已开始下载 · 通知栏查看");
 }
 function exportPDF(){
   const m=docModel();
@@ -1803,8 +1846,7 @@ async function exportWord(){
     const m=docModel();
     const doc=docxOf(m,curTpl);
     const blob=await docx.Packer.toBlob(doc);
-    saveAs(blob,`简历_${curTpl}.docx`);
-    toast("Word(.docx) 已下载 · 可在 Word 编辑");
+    triggerDownload(blob,`简历_${curTpl}.docx`);
   }catch(e){console.error(e);toast("Word 导出失败："+e.message);}
 }
 
@@ -1837,9 +1879,10 @@ $("btnDoc").onclick=()=>gateExport(exportWord);
 
 /* ====================== 持久化 ====================== */
 /* 初始化 */
-/* Capacitor 真机环境：隐藏网页端模拟状态栏（9:41 5G 100%） */
+/* Capacitor 真机环境：隐藏网页端模拟状态栏（9:41 5G 100%）+ 加 native-app 安全区 */
 if(window.Capacitor&&window.Capacitor.isNativePlatform()){
   const sb=document.getElementById("simBar");if(sb)sb.style.display="none";
+  document.body.classList.add("native-app");
 }
 loadLib();loadDraft();loadPay();
 document.documentElement.style.setProperty("--user-font","1"); /* AI 字号控件默认值 */
