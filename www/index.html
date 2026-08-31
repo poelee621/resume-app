@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=8,user-scalable=yes">
 <title>简历生成器 · 真文档版（A4 文档流 · Word/PDF/图片）</title>
 <script src="js/docx.iife.js"></script>
 <script src="js/html2canvas.min.js"></script>
@@ -1390,7 +1390,9 @@ async function renderPreview(){
     document.body.appendChild(tmp);
     const a4=tmp.querySelector(".a4");
     const fit=autoFitA4(a4);
-    const w=794,h=fit.finalH;
+    /* 一页多一点点（<1700）→ 强制压到一页（跟导出保持一致） */
+    const h1=fitToOnePage(a4,1123);
+    const w=794,h=Math.min(h1,fit.finalH);
     const canvas=await html2canvas(a4,{scale:1,width:w,height:h,windowWidth:w,backgroundColor:curTpl==="dark"?"#16181d":"#ffffff",useCORS:true});
     document.body.removeChild(tmp);
     const dataUrl=canvas.toDataURL("image/png");
@@ -1540,12 +1542,17 @@ $("btnPayOk").onclick=async()=>{
   const btn=$("btnPayOk");
   btn.textContent="下单中…";btn.style.opacity=".6";btn.style.pointerEvents="none";
   try{
-    /* 真支付：调 Worker 下单（Native 扫码） */
+    /* 真支付：调 Worker 下单（Native 扫码，带 12s 超时，避免无限"下单中"） */
     const base=AI_WORKER_URL||"https://resume-api.1012425851.workers.dev/";
-    const resp=await fetch(base+"pay/create",{
-      method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({plan:paySel})
-    });
+    const ctrl=new AbortController();
+    const timer=setTimeout(()=>ctrl.abort(),12000);
+    let resp;
+    try{
+      resp=await fetch(base+"pay/create",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({plan:paySel}),signal:ctrl.signal
+      });
+    }finally{clearTimeout(timer);}
     const data=await resp.json();
     if(!data.ok)throw new Error(data.error||"下单失败");
     /* 显示二维码 + 轮询 */
@@ -1553,9 +1560,10 @@ $("btnPayOk").onclick=async()=>{
     showQr(data.code_url,paySel);
   }catch(e){
     /* 降级：Worker 不可用时模拟支付（本地解锁） */
-    btn.textContent="请选择套餐";btn.style.opacity=".45";btn.style.pointerEvents="none";
+    btn.textContent="确认支付";btn.style.opacity="1";btn.style.pointerEvents="auto";
     const nm={once:"单次解锁",month:"包月会员",year:"体验包年"}[paySel];
-    payFor(paySel);hidePayMask();toast("支付服务暂不可用（"+e.message+"）· 已用模拟支付解锁");
+    const msg=e.name==="AbortError"?"网络超时（12s）· 请检查网络后重试":("支付服务暂不可用（"+e.message+"）");
+    payFor(paySel);hidePayMask();toast(msg+" · 已临时解锁本次导出");
     if(payNext){const fn=payNext;payNext=null;setTimeout(fn,200);}
   }
 };
@@ -1792,6 +1800,22 @@ $("chat").onclick=e=>{if(e.target===$("chat"))$("chat").classList.remove("show")
 $("chatSend").onclick=()=>{chatSend($("chatInput").value);$("chatInput").value="";};
 $("chatInput").addEventListener("keydown",e=>{if(e.key==="Enter"){chatSend($("chatInput").value);$("chatInput").value="";}});
 
+/* 一页多一点点 → 强制压到一页：逐步缩字号（0.85→0.62）+ 缩行距（1.5→1.25），直到高度 ≤ 一页 */
+function fitToOnePage(a4,pageH){
+  let h=a4.scrollHeight;
+  if(h<=pageH)return h;
+  if(h>1700)return h; /* 超过近两页，保持多页（强压会糊） */
+  const steps=[0.82,0.76,0.70,0.66,0.62];
+  const lh=["1.42","1.38","1.34","1.30","1.26"];
+  for(let i=0;i<steps.length;i++){
+    a4.style.fontSize=(13*steps[i]).toFixed(2)+"px";
+    a4.querySelectorAll("*").forEach(el=>{if(el.style)el.style.lineHeight=lh[i];});
+    void a4.offsetHeight;
+    h=a4.scrollHeight;
+    if(h<=pageH)return h;
+  }
+  return h;
+}
 /* ====================== 导出 ====================== */
 async function exportImage(){
   const m=docModel();
@@ -1806,10 +1830,11 @@ async function exportImage(){
   a4.style.transform="none";a4.style.fontSize="";a4.style.minHeight="auto";a4.style.paddingBottom="0";
   void a4.offsetHeight;
   const actualH=a4.scrollHeight;
+  /* 测量 + 自适应：少内容字号放大填满；内容"一页多一点点"（<1700）→ 强制压缩到一页（缩字号+行距） */
   let ratio=Math.min(1.0,Math.max(0.85,1033/actualH));
   a4.style.fontSize=(13*ratio).toFixed(2)+"px";
   void a4.offsetHeight;
-  const h2=a4.scrollHeight;
+  let h2=fitToOnePage(a4,1123);
   a4.style.paddingBottom=Math.max(0,1123-h2)+"px";
   const finalH=Math.max(1123,h2+Math.max(0,1123-h2));
   a4.style.minHeight=finalH+"px";
@@ -1838,26 +1863,37 @@ function showFullPreview(urls,type){
     ? `<iframe src="${list[0]}" style="width:100%;flex:1;border:none;background:#fff"></iframe>`
     : list.map(u=>`<img src="${u}" style="max-width:100%;height:auto;margin:12px 0;box-shadow:0 4px 24px rgba(0,0,0,.5)">`).join("");
   box.innerHTML=`<div style="position:sticky;top:0;width:100%;background:rgba(16,18,22,.92);color:#fff;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;font-size:13px;z-index:10;box-sizing:border-box">
-    <span>${type==="html"?"滑动查看简历排版 · 保存请用 Word/PNG":"长按图片保存 · 共 "+list.length+" 页"}</span>
+    <span>${type==="html"?"滑动查看简历排版 · 保存请用 Word/PNG":"👆 点图片退出 · 长按图片保存 · 共 "+list.length+" 页"}</span>
     <span style="display:flex;gap:8px">
-      ${type==="png"?'<span id="fpSave" style="cursor:pointer;padding:6px 14px;background:#2ea86b;border-radius:8px;font-weight:700">保存图片</span>':''}
+      <span id="fpSave" style="cursor:pointer;padding:6px 14px;background:#2ea86b;border-radius:8px;font-weight:700">💾 保存</span>
       <span id="fpClose" style="cursor:pointer;padding:6px 14px;background:#6C5CE7;border-radius:8px;font-weight:700">完成</span>
     </span></div>${bodyHtml}`;
   document.body.appendChild(box);
   box.querySelector("#fpClose").onclick=()=>box.remove();
+  /* PNG：点图片退出（符合直觉）；长按 = 系统原生保存菜单 */
+  box.querySelectorAll("img").forEach(img=>{
+    img.style.cursor="zoom-out";
+    img.onclick=()=>box.remove();
+    /* 长按提示：长按 500ms 后提示"松手可保存图片"（原生菜单由系统提供） */
+    let timer=null;
+    img.addEventListener("touchstart",()=>{timer=setTimeout(()=>toast("松手 → 选「保存图片」"),500);},{passive:true});
+    img.addEventListener("touchend",()=>{if(timer)clearTimeout(timer);},{passive:true});
+  });
+  /* 保存按钮：blob → 原生下载（Android setDownloadListener） */
   const saveBtn=box.querySelector("#fpSave");
   if(saveBtn){
     saveBtn.onclick=async()=>{
-      toast("正在保存 "+list.length+" 张图片…");
-      for(let idx=0;idx<list.length;idx++){
-        try{
+      saveBtn.textContent="保存中…";
+      try{
+        for(let idx=0;idx<list.length;idx++){
           const resp=await fetch(list[idx]); /* dataURL → blob */
           const blob=await resp.blob();
           const fn=`简历_${curTpl}_${list.length>1?"第"+(idx+1)+"页_":""}.png`;
-          triggerDownload(blob,fn); /* blob URL → Android setDownloadListener 接管 → 真下载 */
-        }catch(e){toast("保存失败："+e.message);}
-      }
-      toast("已发起保存 · 下拉通知栏查看（保存到 Download/简历大师/ 目录）");
+          triggerDownload(blob,fn);
+        }
+        toast("✅ 已保存到 Download/简历大师/ 目录 · 通知栏查看");
+      }catch(e){toast("保存失败："+e.message);}
+      saveBtn.textContent="💾 保存";
     };
   }
 }
@@ -1928,16 +1964,24 @@ function enterEditMode(){
   /* 独立全屏 fixed 遮罩（脱离 pageExport 布局，无导出按钮/tab 干扰） */
   const mask=document.createElement("div");
   mask.id="editMask";
-  mask.style.cssText="position:fixed;inset:0;z-index:9990;background:#525659;display:flex;flex-direction:column;";
+  mask.style.cssText="position:fixed;inset:0;z-index:9990;background:#eef0f4;display:flex;flex-direction:column;";
   mask.innerHTML=`
-    <div class="edit-toolbar" style="position:relative;flex:0 0 auto;z-index:10">
-      <span style="font-size:12px;font-weight:800;flex:1">✏️ 点击文字直接编辑 · 改完点保存</span>
-      <span class="et-btn" id="edZoomOut">−</span><span id="edZoomPct" style="font-size:12px;font-weight:700;width:44px;text-align:center">100%</span><span class="et-btn" id="edZoomIn">＋</span>
-      <span class="et-btn et-green" id="edSave">💾 保存</span>
-      <span class="et-btn" id="edForm">📝</span>
-      <span class="et-btn" id="edCancel">✕</span>
+    <div class="edit-toolbar" style="position:relative;flex:0 0 auto;z-index:10;flex-direction:column;align-items:stretch;gap:8px">
+      <div style="font-size:12.5px;font-weight:800;text-align:center">✏️ 点击文字直接编辑 · 双指可缩放</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="et-btn" id="edZoomOut">−</span>
+          <span id="edZoomPct" style="font-size:12px;font-weight:700;min-width:42px;text-align:center">100%</span>
+          <span class="et-btn" id="edZoomIn">＋</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="et-btn" id="edForm">表单</span>
+          <span class="et-btn et-green" id="edSave">保存</span>
+          <span class="et-btn" id="edCancel">取消</span>
+        </div>
+      </div>
     </div>
-    <div id="editScroll" style="flex:1;overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:16px 8px;box-sizing:border-box;-webkit-overflow-scrolling:touch">
+    <div id="editScroll" style="flex:1;overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:16px 8px;box-sizing:border-box;-webkit-overflow-scrolling:touch;touch-action:pinch-zoom">
       <div id="editA4Wrap" class="edit-a4wrap"></div>
     </div>`;
   document.body.appendChild(mask);
