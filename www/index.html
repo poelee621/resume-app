@@ -29,7 +29,8 @@ html,body{height:100%;background:#e9ecf2;font-family:-apple-system,"PingFang SC"
 .field label{display:block;font-size:11px;color:var(--muted);margin-bottom:3px;font-weight:600}
 .field input{width:100%;border:1px solid var(--line);border-radius:9px;padding:7px 10px;font-size:12.5px;outline:none;background:#fff;font-family:inherit;resize:vertical;line-height:1.3;letter-spacing:.2px}
 .field input:focus{border-color:var(--brand)}
-textarea{width:100%;border:1px solid var(--line);border-radius:9px;padding:8px 10px 28px;font-size:12.5px;outline:none;background:#fff;font-family:inherit;resize:vertical;line-height:1.5;letter-spacing:.2px;white-space:pre-wrap;word-break:keep-all;overflow-wrap:break-word;min-height:66px;max-height:140px}
+textarea{width:100%;border:1px solid var(--line);border-radius:9px;padding:8px 10px 28px;font-size:12.5px;outline:none;background:#fff;font-family:inherit;resize:none;line-height:1.5;letter-spacing:.2px;white-space:pre-wrap;word-break:keep-all;overflow-wrap:break-word;min-height:66px;max-height:280px;transition:border-color .2s,box-shadow .2s}
+textarea:focus{border-color:var(--brand);box-shadow:0 0 0 2px rgba(108,92,231,.12)}
 textarea:focus{border-color:var(--brand)}
 .ta-wrap{position:relative}
 .ta-wrap input.ia-input{width:100%;border:1px solid var(--line);border-radius:9px;padding:7px 56px 7px 10px;font-size:12.5px;outline:none;background:#fff;font-family:inherit;line-height:1.3}
@@ -774,6 +775,20 @@ textarea:focus{border-color:var(--brand)}
 .font-slider .b:active{transform:scale(.96)}
 /* 全局正文缩放（AI 字号控件用，覆盖 24 套模板的正文级文字） */
 .a4 .summary,.a4 .desc,.a4 .contact,.a4 .item .r1,.a4 .item .sub{font-size:calc(var(--user-font,1) * 12.5px)!important}
+/* ====================== 预览内编辑模式 ====================== */
+.edit-toolbar{position:sticky;top:0;z-index:20;background:rgba(245,246,250,.97);border-bottom:1px solid var(--line);padding:8px 12px;display:flex;align-items:center;gap:8px;box-sizing:border-box;backdrop-filter:blur(8px);animation:editIn .25s ease}
+@keyframes editIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+.et-btn{font-size:12px;font-weight:700;padding:6px 13px;border-radius:9px;border:1px solid var(--line);background:#fff;cursor:pointer;font-family:inherit;transition:transform .15s,box-shadow .2s,background .2s;user-select:none}
+.et-btn:hover{box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.et-btn:active{transform:scale(.92)}
+.et-primary{background:var(--grad);color:#fff;border:none}
+.et-green{background:#2ea86b;color:#fff;border:none}
+.edit-a4wrap{transform-origin:top center;transition:transform .22s cubic-bezier(.22,1,.36,1)}
+.edit-a4wrap .a4{box-shadow:0 8px 30px rgba(0,0,0,.35)}
+.edit-a4wrap [contenteditable]{outline:none;border-radius:3px;transition:box-shadow .15s,background .2s;cursor:text}
+.edit-a4wrap [contenteditable]:hover{box-shadow:0 0 0 1px rgba(108,92,231,.4)}
+.edit-a4wrap [contenteditable]:focus{box-shadow:0 0 0 2px rgba(108,92,231,.55);background:rgba(108,92,231,.05)}
+.edit-a4wrap .sec{transition:box-shadow .15s}
 
 @page{size:A4 portrait;margin:0}
 @media print{
@@ -916,7 +931,7 @@ textarea:focus{border-color:var(--brand)}
       <div class="plan" data-pay="year"><span class="tag2">超值</span><span class="ic">👑</span><div style="flex:1"><div class="nm">体验包年</div><div class="ds">365 天不限次导出 · 原价 ¥599</div></div><div class="pr">¥89 <small><span class="old">¥599</span></small></div></div>
     </div>
     <div class="btn primary" id="btnPayOk" style="opacity:.45;pointer-events:none">请选择套餐</div>
-    <div class="pay-note">当前为原型演示，支付为模拟流程 · 正式版接入微信支付</div>
+    <div class="pay-note">已接入微信支付 · 支付由微信官方安全完成 · 支付后立即解锁</div>
   </div>
 </div>
 
@@ -1056,9 +1071,9 @@ function htmlOf(m,tpl){
   const extraHTML=(()=>{
     let out="";
     const aw=m.awards||[];
-    if(aw.length)out+=`<div class="sec"><div class="sec-t">获奖证书</div>${aw.map(a=>{const p=a.split("|");return `<div class="item"><div class="r1"><span>${esc(p[0]||"")}</span>${p[1]?`<span class="per">${esc(p[1])}</span>`:''}</div></div>`;}).join("")}</div>`;
-    if(m.interests)out+=`<div class="sec"><div class="sec-t">兴趣特长</div><div class="summary">${esc(m.interests)}</div></div>`;
-    (m.customSections||[]).forEach(cs=>{if(cs&&cs.name&&cs.content)out+=`<div class="sec"><div class="sec-t">${esc(cs.name)}</div><div class="summary">${esc(cs.content)}</div></div>`;});
+    if(aw.length)out+=`<div class="sec" data-sec="awards"><div class="sec-t">获奖证书</div>${aw.map(a=>{const p=a.split("|");return `<div class="item"><div class="r1"><span>${esc(p[0]||"")}</span>${p[1]?`<span class="per">${esc(p[1])}</span>`:''}</div></div>`;}).join("")}</div>`;
+    if(m.interests)out+=`<div class="sec" data-sec="interests"><div class="sec-t">兴趣特长</div><div class="summary">${esc(m.interests)}</div></div>`;
+    (m.customSections||[]).forEach(cs=>{if(cs&&cs.name&&cs.content)out+=`<div class="sec" data-sec="custom:${esc(cs.name)}"><div class="sec-t">${esc(cs.name)}</div><div class="summary">${esc(cs.content)}</div></div>`;});
     return out;
   })();
 
@@ -1076,9 +1091,9 @@ function htmlOf(m,tpl){
         ${m.educations.map(e=>`<div class="sedu"><div class="strong">${esc(e.school)}</div><div class="muted">${esc(e.major)} · ${esc(e.degree)}</div><div class="muted">${esc(e.period)}</div></div>`).join("")}
       </aside>
       <main class="main">
-        <div class="sec"><div class="sec-t">个人简介</div><div class="summary">${esc(m.summary)}</div></div>
-        <div class="sec"><div class="sec-t">工作经历</div>${workHTML}</div>
-        <div class="sec"><div class="sec-t">项目经历</div>${projHTML}</div>
+        <div class="sec" data-sec="summary"><div class="sec-t">个人简介</div><div class="summary">${esc(m.summary)}</div></div>
+        <div class="sec" data-sec="works"><div class="sec-t">工作经历</div>${workHTML}</div>
+        <div class="sec" data-sec="projects"><div class="sec-t">项目经历</div>${projHTML}</div>
         ${extraHTML}
       </main>
     </div>`;
@@ -1098,9 +1113,9 @@ function htmlOf(m,tpl){
         ${m.educations.map(e=>`<div class="bedu"><div class="strong">${esc(e.school)}</div><div class="muted">${esc(e.major)} · ${esc(e.degree)}</div><div class="muted">${esc(e.period)}</div></div>`).join("")}
       </aside>
       <main class="bright">
-        <div class="sec"><div class="sec-t">个人简介</div><div class="summary">${esc(m.summary)}</div></div>
-        <div class="sec"><div class="sec-t">工作经历</div>${workHTML}</div>
-        <div class="sec"><div class="sec-t">项目经历</div>${projHTML}</div>
+        <div class="sec" data-sec="summary"><div class="sec-t">个人简介</div><div class="summary">${esc(m.summary)}</div></div>
+        <div class="sec" data-sec="works"><div class="sec-t">工作经历</div>${workHTML}</div>
+        <div class="sec" data-sec="projects"><div class="sec-t">项目经历</div>${projHTML}</div>
         ${extraHTML}
       </main>
     </div>`;
@@ -1112,11 +1127,11 @@ function htmlOf(m,tpl){
     <div class="contact">${esc(contact)}</div>
     ${extraInfo?`<div class="contact" style="margin-top:3px;opacity:.85">${esc(extraInfo)}</div>`:''}
     <hr class="rule">
-    <div class="sec"><div class="sec-t">个人简介</div><div class="summary">${esc(m.summary)}</div></div>
-    <div class="sec"><div class="sec-t">工作经历</div>${workHTML}</div>
-    <div class="sec"><div class="sec-t">项目经历</div>${projHTML}</div>
-    <div class="sec"><div class="sec-t">教育背景</div>${eduHTML}</div>
-    <div class="sec"><div class="sec-t">专业技能</div>${skillHTML}</div>
+    <div class="sec" data-sec="summary"><div class="sec-t">个人简介</div><div class="summary">${esc(m.summary)}</div></div>
+    <div class="sec" data-sec="works"><div class="sec-t">工作经历</div>${workHTML}</div>
+    <div class="sec" data-sec="projects"><div class="sec-t">项目经历</div>${projHTML}</div>
+    <div class="sec" data-sec="edu"><div class="sec-t">教育背景</div>${eduHTML}</div>
+    <div class="sec" data-sec="skills"><div class="sec-t">专业技能</div>${skillHTML}</div>
     ${extraHTML}
   </div>`;
 }
@@ -1251,6 +1266,13 @@ function syncFormFromProfile(){
   $("f_awards").value=(profile.awards||[]).join("\n");
   $("f_interests").value=profile.interests||"";
   renderCustomSections();
+  /* textarea 自动增高：跟聊天输入框一样随内容变高 */
+  ["f_summary","f_works","f_projects","f_edu","f_skills","f_awards"].forEach(id=>{const ta=$(id);if(ta)autoResizeTA(ta);});
+}
+/* textarea 自动增高 */
+function autoResizeTA(ta){
+  ta.style.height="auto";
+  ta.style.height=Math.max(66,Math.min(280,ta.scrollHeight))+"px";
 }
 /* 自定义模块：渲染动态列表（名字 + 内容 + 删除） */
 function renderCustomSections(){
@@ -1833,13 +1855,14 @@ function triggerDownload(blob,filename){
 function exportPDF(){
   const m=docModel();
   const styleTxt=document.querySelector("style").innerHTML;
-  /* 生成完整 A4 排版 HTML → 全屏 iframe 预览（真机 WebView 无打印，用 Word/PNG 保存） */
+  /* 真实 A4 视觉：灰底画框 + A4 白卡居中（794px，1:1.414 比例） */
   const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>简历_${curTpl}</title>
-  <style>@page{size:A4 portrait;margin:0}body{margin:0;background:#fff;display:flex;justify-content:center}${styleTxt}</style></head>
-  <body>${htmlOf(m,curTpl)}</body></html>`;
+  <style>@page{size:A4 portrait;margin:0}body{margin:0;background:#525659;padding:16px 0}${styleTxt}
+  .a4{box-shadow:0 8px 30px rgba(0,0,0,.35)}</style></head>
+  <body style="display:flex;justify-content:center">${htmlOf(m,curTpl)}</body></html>`;
   const blob=new Blob([html],{type:"text/html;charset=utf-8"});
   showFullPreview(URL.createObjectURL(blob),"html");
-  toast("PDF 预览已打开 · 手机保存建议用 Word/PNG");
+  toast("A4 尺寸预览 · 手机保存建议用 Word/PNG");
 }
 async function exportWord(){
   try{
@@ -1861,6 +1884,8 @@ function goTab(p){
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>goTab(t.dataset.p));
 ["f_name","f_title","f_city","f_phone","f_email","f_summary","f_works","f_projects","f_edu","f_skills","f_awards","f_interests"]
   .forEach(id=>$(id).addEventListener("input",()=>{syncProfileFromForm();if($("pageExport").classList.contains("on"))scheduleRenderPreview();saveDraft();}));
+/* textarea 随输入自动增高 */
+document.querySelectorAll("textarea").forEach(ta=>ta.addEventListener("input",()=>autoResizeTA(ta)));
 $("btnAddSection").onclick=()=>{
   profile.customSections=(profile.customSections||[]).concat([{id:"cs"+Date.now(),name:"",content:""}]);
   renderCustomSections();saveDraft();toast("已添加模块 · 填入名称和内容");
@@ -1869,13 +1894,95 @@ $("btnReset").onclick=()=>{profile=JSON.parse(JSON.stringify(DEFAULT_PROFILE));p
 $("avaPick").onclick=()=>$("photoFile").click();
 $("photoFile").onchange=e=>{const f=e.target.files[0];if(!f)return;if(f.size>5*1024*1024){toast("图片过大（>5MB）");e.target.value="";return;}const rd=new FileReader();rd.onload=()=>{photoData=rd.result;renderAva();renderTplGrid();renderPreview();saveDraft();toast("头像已上传 · 简历预览已同步");};rd.readAsDataURL(f);e.target.value="";};
 $("btnSave").onclick=doSaveResume;
-$("btnEdit").onclick=()=>goTab("pageWrite");
+$("btnEdit").onclick=()=>goTab("pageWrite"); /* 写简历页的「📌 生成简历」下方另有入口；导出页 ✏️修改 由 enterEditMode 接管（覆盖于下方） */
 $("btnBackTpl").onclick=()=>goTab("pageTpl");
 $("btnNameOk").onclick=nameOk;
 $("inpName").addEventListener("keydown",e=>{if(e.key==="Enter")nameOk();});
 $("btnImg").onclick=exportImage; /* PNG 免费 */
 $("btnPdf").onclick=()=>gateExport(exportPDF);
 $("btnDoc").onclick=()=>gateExport(exportWord);
+
+/* ====================== 预览内编辑模式（双击文字直接改 · 保存回写） ====================== */
+let editZoom=1;
+function enterEditMode(){
+  const wrap=$("previewWrap");if(!wrap)return;
+  const m=docModel();
+  const box=document.createElement("div");
+  box.id="editMode";
+  box.innerHTML=`
+    <div class="edit-toolbar">
+      <span style="font-size:12px;font-weight:800;flex:1">✏️ 点击文字直接编辑 · 改完点保存</span>
+      <span class="et-btn" id="edZoomOut">−</span><span id="edZoomPct" style="font-size:12px;font-weight:700;width:42px;text-align:center">100%</span><span class="et-btn" id="edZoomIn">＋</span>
+      <span class="et-btn et-green" id="edSave">💾 保存修改</span>
+      <span class="et-btn" id="edForm">📝 表单</span>
+      <span class="et-btn" id="edCancel">✕</span>
+    </div>`;
+  const a4wrap=document.createElement("div");
+  a4wrap.className="edit-a4wrap";
+  a4wrap.innerHTML=htmlOf(m,curTpl);
+  const a4=a4wrap.querySelector(".a4");
+  a4.setAttribute("contenteditable","true");
+  box.appendChild(a4wrap);
+  wrap.innerHTML="";
+  wrap.style.display="flex";wrap.style.flexDirection="column";wrap.style.alignItems="center";wrap.style.padding="12px 0";
+  wrap.appendChild(box);
+  /* 缩放 */
+  const applyZoom=()=>{
+    editZoom=Math.min(1.8,Math.max(0.6,editZoom));
+    a4wrap.style.transform=`scale(${editZoom})`;
+    $("edZoomPct").textContent=Math.round(editZoom*100)+"%";
+    a4wrap.style.marginBottom=-(1-editZoom)*900+"px";
+  };
+  $("edZoomIn").onclick=()=>{editZoom+=0.15;applyZoom();};
+  $("edZoomOut").onclick=()=>{editZoom-=0.15;applyZoom();};
+  applyZoom();
+  /* 保存：按 data-sec 提取编辑后的内容回写 profile */
+  $("edSave").onclick=()=>{
+    const p=collectEditedA4(a4);
+    profile=p;syncFormFromProfile();scheduleRenderPreview();saveDraft();
+    exitEditMode();
+    toast("✅ 已保存修改 · 简历已更新");
+  };
+  $("edCancel").onclick=exitEditMode;
+  $("edForm").onclick=()=>{exitEditMode();goTab("pageWrite");};
+}
+function exitEditMode(){
+  const w=$("previewWrap");if(!w)return;
+  w.style.cssText="";
+  const em=document.getElementById("editMode");if(em)em.remove();
+  scheduleRenderPreview();
+}
+function collectEditedA4(a4){
+  const p=JSON.parse(JSON.stringify(profile));
+  const txt=s=>s?.textContent?.trim()||"";
+  p.basics.name=txt(a4.querySelector(".name"));
+  p.basics.title=txt(a4.querySelector(".title"));
+  a4.querySelectorAll(".sec[data-sec]").forEach(sec=>{
+    const type=sec.dataset.sec;
+    const items=[...sec.querySelectorAll(".item")];
+    if(type==="summary")p.basics.summary=txt(sec.querySelector(".summary"));
+    else if(type==="works")p.works=items.map(it=>[txt(it.querySelector(".r1 span")),txt(it.querySelector(".sub")),txt(it.querySelector(".r1 .per")),txt(it.querySelector(".desc"))].filter((v,i)=>i!==0||v).join("|"));
+    else if(type==="projects")p.projects=items.map(it=>[txt(it.querySelector(".r1 span")),txt(it.querySelector(".sub")),txt(it.querySelector(".r1 .per")),txt(it.querySelector(".desc"))].join("|"));
+    else if(type==="edu"){
+      p.educations=items.map(it=>{
+        const sub=txt(it.querySelector(".sub"));
+        const sp=sub.split(" · ");
+        return [txt(it.querySelector(".r1 span")),sp[0]||"",sp[1]||"",txt(it.querySelector(".r1 .per"))].join("|");
+      });
+    }
+    else if(type==="skills")p.skills=[...sec.querySelectorAll(".tag")].map(t=>t.textContent.trim());
+    else if(type==="awards")p.awards=items.map(it=>[txt(it.querySelector(".r1 span")),txt(it.querySelector(".per"))].filter(Boolean).join("|"));
+    else if(type==="interests")p.interests=txt(sec.querySelector(".summary"));
+    else if(type.startsWith("custom:")){
+      const name=type.slice(7);
+      const cs=p.customSections||[];
+      const idx=cs.findIndex(c=>c.name===name);
+      if(idx>=0)cs[idx].content=txt(sec.querySelector(".summary"));
+    }
+  });
+  return p;
+}
+$("btnEdit").onclick=enterEditMode; /* ✏️ 修改 → 预览内直接编辑 */
 
 /* ====================== 持久化 ====================== */
 /* 初始化 */
