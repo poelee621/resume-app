@@ -19,7 +19,7 @@ public class MainActivity extends BridgeActivity {
             public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
                 try {
                     DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
-                    request.setMIMEType(mimetype == null ? "application/octet-stream" : mimetype);
+                    request.setMimeType(mimetype == null ? "application/octet-stream" : mimetype);
                     request.addRequestHeader("User-Agent", userAgent);
                     request.setDescription("简历大师导出文件");
                     request.setTitle(URLUtil.guessFileName(url, contentDisposition, "resume"));
