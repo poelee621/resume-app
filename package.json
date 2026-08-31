@@ -1,0 +1,17 @@
+{
+  "name": "resume-app",
+  "version": "1.0.0",
+  "description": "简历 App - 32 套模板 + AI 润色 + 微信支付",
+  "private": true,
+  "scripts": {
+    "sync": "cap sync",
+    "android": "cap open android",
+    "ios": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/ios": "^8.5.0"
+  }
+}
