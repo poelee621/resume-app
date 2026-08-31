@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>简历生成器 · 真文档版（A4 文档流 · Word/PDF/图片）</title>
-<script src="https://cdn.jsdelivr.net/npm/docx@8.5.1/build/index.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script src="js/docx.iife.js"></script>
+<script src="js/html2canvas.min.js"></script>
+<script src="js/FileSaver.min.js"></script>
+<script src="js/qrcode.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{--brand:#6C5CE7;--ink:#1d2129;--muted:#8a909c;--line:#eceff4;--grad:linear-gradient(135deg,#6C5CE7,#a66bff)}
@@ -782,7 +782,7 @@ textarea:focus{border-color:var(--brand)}
 </head>
 <body>
 <div class="phone">
-  <div class="statusbar"><span>9:41</span><span class="icons">●●● 5G ▮▮▮ 100%</span></div>
+  <div class="statusbar" id="simBar"><span>9:41</span><span class="icons">●●● 5G ▮▮▮ 100%</span></div>
   <div class="screen">
     <!-- 写简历 -->
     <section class="page on" id="pageWrite">
@@ -1767,28 +1767,36 @@ function exportImage(){
   const fit=autoFitA4(a4);
   const w=794,h=fit.finalH;
   html2canvas(a4,{scale:2,width:w,height:h,windowWidth:w,backgroundColor:curTpl==="dark"?"#16181d":"#ffffff",useCORS:true}).then(canvas=>{
-    canvas.toBlob(b=>{saveAs(b,`简历_${curTpl}.png`);toast("PNG 已下载（"+Math.round(canvas.width/2)+"×"+Math.round(canvas.height/2)+(fit.multiPage?" 多页":"")+" retina）");document.body.removeChild(tmp);});
+    document.body.removeChild(tmp);
+    /* 全屏弹出图片 → 用户长按保存（真机 WebView 不支持直接下载文件） */
+    showFullPreview(canvas.toDataURL("image/png"),"png");
+    toast("长按图片即可保存到手机");
   }).catch(e=>{try{document.body.removeChild(tmp);}catch(_){}toast("导出失败："+e.message);});
+}
+/* 全屏预览（PNG 长按保存 / PDF-HTML 滑动查看） */
+function showFullPreview(url,type){
+  const old=document.getElementById("fullPreview");if(old)old.remove();
+  const box=document.createElement("div");
+  box.id="fullPreview";
+  box.style.cssText="position:fixed;inset:0;z-index:999;background:#101216;display:flex;flex-direction:column;align-items:center;overflow:auto";
+  const inner=type==="html"
+    ? `<iframe src="${url}" style="width:100%;flex:1;border:none;background:#fff"></iframe>`
+    : `<img src="${url}" style="max-width:100%;height:auto;margin:16px 0;box-shadow:0 4px 24px rgba(0,0,0,.5)" alt="简历预览">`;
+  box.innerHTML=`<div style="position:sticky;top:0;width:100%;background:rgba(16,18,22,.92);color:#fff;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;font-size:13px;z-index:10;box-sizing:border-box">
+    <span>${type==="html"?"滑动查看简历排版 · 保存请用 Word/PNG":"👇 长按图片保存到手机"}</span><span id="fpClose" style="cursor:pointer;padding:6px 14px;background:#6C5CE7;border-radius:8px;font-weight:700">完成</span></div>${inner}`;
+  document.body.appendChild(box);
+  box.querySelector("#fpClose").onclick=()=>box.remove();
 }
 function exportPDF(){
   const m=docModel();
   const styleTxt=document.querySelector("style").innerHTML;
-  const w=window.open("","_blank");
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>简历_${curTpl}</title>
-  <style>
-  @page{size:A4 portrait;margin:0}
-  body{margin:0;background:#fff;display:flex;justify-content:center}
-  ${styleTxt}
-  </style></head><body>${htmlOf(m,curTpl)}<script>
-  window.onload=function(){
-    setTimeout(function(){
-      var a4=document.querySelector(".a4");
-      if(a4&&typeof autoFitA4==="function"){autoFitA4(a4);}
-      setTimeout(function(){window.print();},150);
-    },150);
-  };
-  <\/script></body></html>`);
-  toast("PDF 打印窗口已打开 · 选「另存为PDF」");
+  /* 生成完整 A4 排版 HTML → 全屏 iframe 预览（真机 WebView 无打印，用 Word/PNG 保存） */
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>简历_${curTpl}</title>
+  <style>@page{size:A4 portrait;margin:0}body{margin:0;background:#fff;display:flex;justify-content:center}${styleTxt}</style></head>
+  <body>${htmlOf(m,curTpl)}</body></html>`;
+  const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+  showFullPreview(URL.createObjectURL(blob),"html");
+  toast("PDF 预览已打开 · 手机保存建议用 Word/PNG");
 }
 async function exportWord(){
   try{
@@ -1829,6 +1837,10 @@ $("btnDoc").onclick=()=>gateExport(exportWord);
 
 /* ====================== 持久化 ====================== */
 /* 初始化 */
+/* Capacitor 真机环境：隐藏网页端模拟状态栏（9:41 5G 100%） */
+if(window.Capacitor&&window.Capacitor.isNativePlatform()){
+  const sb=document.getElementById("simBar");if(sb)sb.style.display="none";
+}
 loadLib();loadDraft();loadPay();
 document.documentElement.style.setProperty("--user-font","1"); /* AI 字号控件默认值 */
 /* 旧版单份数据迁移（resume_state → 简历库第一份） */
