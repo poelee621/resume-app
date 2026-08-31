@@ -1833,13 +1833,17 @@ function showFullPreview(urls,type){
   box.querySelector("#fpClose").onclick=()=>box.remove();
   const saveBtn=box.querySelector("#fpSave");
   if(saveBtn){
-    saveBtn.onclick=()=>{
-      list.forEach((u,idx)=>{
-        const a=document.createElement("a");
-        a.href=u;a.download=`简历_${curTpl}_${list.length>1?"第"+(idx+1)+"页_":""}.png`;
-        document.body.appendChild(a);a.click();a.remove();
-      });
-      toast("已开始保存 "+list.length+" 张 · 下拉通知栏查看");
+    saveBtn.onclick=async()=>{
+      toast("正在保存 "+list.length+" 张图片…");
+      for(let idx=0;idx<list.length;idx++){
+        try{
+          const resp=await fetch(list[idx]); /* dataURL → blob */
+          const blob=await resp.blob();
+          const fn=`简历_${curTpl}_${list.length>1?"第"+(idx+1)+"页_":""}.png`;
+          triggerDownload(blob,fn); /* blob URL → Android setDownloadListener 接管 → 真下载 */
+        }catch(e){toast("保存失败："+e.message);}
+      }
+      toast("已发起保存 · 下拉通知栏查看（保存到 Download/简历大师/ 目录）");
     };
   }
 }
