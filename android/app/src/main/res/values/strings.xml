@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">AI简历大师</string>
-    <string name="title_activity_main">AI简历大师</string>
+    <string name="app_name">职简</string>
+    <string name="title_activity_main">职简</string>
     <string name="package_name">com.coldtank.resume</string>
 </resources>

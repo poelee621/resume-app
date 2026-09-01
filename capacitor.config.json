@@ -1,6 +1,6 @@
 {
   "appId": "com.coldtank.resume",
-  "appName": "AI简历大师",
+  "appName": "职简",
   "webDir": "www",
   "server": {
     "androidScheme": "https"

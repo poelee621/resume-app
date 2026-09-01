@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#f2f4f8;font-family:"Microsoft YaHei","PingFang SC",sans-serif;color:#1d2129;padding:24px}
+  .page{width:1280px;background:#fff;margin:0 auto 32px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.08);padding:48px 56px;page-break-after:always}
+  .hd{display:flex;align-items:center;gap:16px;margin-bottom:8px}
+  .hd .logo{width:64px;height:64px;border-radius:14px;background:linear-gradient(135deg,#6C5CE7,#a66bff);display:flex;align-items:center;justify-content:center;font-size:30px;color:#fff;flex-shrink:0}
+  .hd h1{font-size:30px;font-weight:800;letter-spacing:1px}
+  .hd .sub{color:#8a909c;font-size:14px;margin-top:4px}
+  .rule{height:3px;background:linear-gradient(90deg,#6C5CE7,#a66bff,#ffd166);border-radius:2px;margin:20px 0 28px}
+  .node{background:#fff;border:2px solid #6C5CE7;border-radius:12px;padding:14px 22px;display:inline-block;text-align:center;font-size:17px;font-weight:600;color:#4a3fc0;box-shadow:0 2px 8px rgba(108,92,231,.12)}
+  .node .en{display:block;font-size:11px;font-weight:400;color:#a0a4b8;margin-top:4px;letter-spacing:1px}
+  .node.pay{background:linear-gradient(135deg,#6C5CE7,#8b5cf6);color:#fff;border:none}
+  .node.pay .en{color:rgba(255,255,255,.7)}
+  .node.done{background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none}
+  .node.done .en{color:rgba(255,255,255,.7)}
+  .arrow{text-align:center;font-size:26px;color:#6C5CE7;line-height:1;padding:8px 0;font-weight:700}
+  .flow{display:flex;flex-direction:column;align-items:center}
+  .cols{display:flex;gap:40px;justify-content:center;align-items:flex-start;margin-top:6px}
+  .col{display:flex;flex-direction:column;align-items:center;flex:0 0 auto}
+  .col-t{font-size:15px;font-weight:700;padding:8px 20px;border-radius:20px;margin-bottom:10px}
+  .col-t.free{background:#ecfdf5;color:#059669;border:2px solid #10b981}
+  .col-t.paid{background:#fef3c7;color:#b45309;border:2px solid #f59e0b}
+  .tag{display:inline-block;font-size:12px;padding:2px 10px;border-radius:10px;margin-left:6px;vertical-align:middle}
+  .tag.free{background:#10b981;color:#fff}
+  .tag.pay{background:#f59e0b;color:#fff}
+  .foot{margin-top:30px;padding-top:16px;border-top:1px dashed #e5e7f0;color:#8a909c;font-size:13px;text-align:center}
+  /* 泳道 */
+  .swim{display:grid;grid-template-columns:200px 1fr 1fr 1fr;gap:0;margin-top:10px;border:1px solid #e5e7f0;border-radius:12px;overflow:hidden}
+  .lane-hd{background:#f8f9fe;padding:14px 10px;text-align:center;font-size:15px;font-weight:700;color:#4a3fc0;border-bottom:2px solid #6C5CE7}
+  .lane{background:#fff;padding:10px;min-height:60px}
+  .lane:nth-child(even){background:#fbfbfe}
+  .msg{background:#fff;border:1.5px solid #c7d2fe;border-radius:10px;padding:10px 12px;font-size:14px;color:#3730a3;text-align:center;position:relative;margin:8px auto;max-width:90%}
+  .msg b{display:block;font-size:15px;margin-bottom:3px}
+  .msg .dir{color:#8a909c;font-size:11px}
+  .msgs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px}
+  .msgs .msg{max-width:100%;margin:0}
+  /* 架构 */
+  .arch{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:8px}
+  .mod{background:#f8f9fe;border:2px solid #c7d2fe;border-radius:14px;padding:18px;text-align:center}
+  .mod .ic{font-size:34px}
+  .mod h3{font-size:17px;margin:8px 0 6px;color:#3730a3}
+  .mod ul{list-style:none;text-align:left;font-size:13px;color:#5b6080;line-height:1.9}
+  .mod ul li::before{content:"· ";color:#6C5CE7;font-weight:700}
+  .backend{margin-top:22px;background:linear-gradient(135deg,#1e1b4b,#3730a3);border-radius:14px;padding:20px;color:#fff;display:flex;align-items:center;justify-content:space-around;text-align:center}
+  .backend h3{font-size:15px;margin-bottom:8px;opacity:.85}
+  .backend .srv{font-size:18px;font-weight:700}
+  .backend .srv small{display:block;font-size:12px;opacity:.7;font-weight:400;margin-top:2px}
+</style>
+</head>
+<body>
+
+<!-- ============ 图1：核心业务流程图 ============ -->
+<div class="page">
+  <div class="hd">
+    <div class="logo">📄</div>
+    <div>
+      <h1>职简 · 核心业务流程</h1>
+      <div class="sub">A4 简历制作工具 · 免费使用 + 导出增值付费（图片免费 · Word/PDF 会员解锁）</div>
+    </div>
+  </div>
+  <div class="rule"></div>
+
+  <div class="flow">
+    <div class="node">① 填写简历资料<span class="en">基本信息 / 工作经历 / 项目 / 技能 / 获奖 / 兴趣</span></div>
+    <div class="arrow">▼</div>
+    <div class="node">② AI 智能润色<span class="en">DeepSeek 大模型一键优化工作与项目描述</span></div>
+    <div class="arrow">▼</div>
+    <div class="node">③ 选择模板 · 实时预览<span class="en">32 套 A4 专业模板 · 真文档流排版</span></div>
+    <div class="arrow">▼</div>
+    <div class="node">④ 保存到简历库<span class="en">多份简历按目标公司分别管理</span></div>
+    <div class="arrow">▼</div>
+    <div class="node">⑤ 导出简历<span class="en">三种呈现方式</span></div>
+    <div class="arrow">▼</div>
+  </div>
+
+  <div class="cols">
+    <div class="col">
+      <div class="col-t free">🖼 简历图片 PNG（免费）</div>
+      <div class="node" style="font-size:14px">保存到手机相册<span class="en">长按/按钮一键保存</span></div>
+      <div class="arrow">▼</div>
+      <div class="node done" style="font-size:14px">完成 · 直接投递/分享</div>
+    </div>
+    <div class="col">
+      <div class="col-t paid">📄 Word / 📕 PDF 导出（增值付费）</div>
+      <div class="node" style="font-size:14px">付费墙 · 选择套餐<span class="en">单次 ¥9.9 / 包月 ¥49 / 包年 ¥89</span></div>
+      <div class="arrow">▼</div>
+      <div class="node pay" style="font-size:15px">💳 微信支付<span class="en">App 内拉起微信收银台</span></div>
+      <div class="arrow">▼</div>
+      <div class="node done" style="font-size:14px">支付成功 · 自动解锁导出<span class="en">到期续费 / 不限次</span></div>
+    </div>
+  </div>
+
+  <div class="foot">运营模式：基础功能免费引流 → 求职刚需场景高频使用 → Word/PDF 导出与 AI 润色深度服务形成付费点，微信支付闭环变现</div>
+</div>
+
+<!-- ============ 图2：微信支付集成流程 ============ -->
+<div class="page">
+  <div class="hd">
+    <div class="logo">💳</div>
+    <div>
+      <h1>职简 · 微信支付集成流程</h1>
+      <div class="sub">用户 → App → 阿里云后端 → 微信支付 APIv3 完整时序</div>
+    </div>
+  </div>
+  <div class="rule"></div>
+
+  <div class="swim">
+    <div class="lane-hd" style="background:#eef0ff">参与者</div>
+    <div class="lane-hd">📱 用户</div>
+    <div class="lane-hd">📲 职简 App</div>
+    <div class="lane-hd">☁️ 后端（阿里云 FC）+ 微信支付</div>
+
+    <div class="lane" style="background:#f3f4ff">操作顺序</div>
+    <div class="lane"><div class="msg"><b>1</b>选择套餐，点击「确认支付」<span class="dir">↓ 发起下单请求</span></div></div>
+    <div class="lane"><div class="msg"><b>2</b>接收订单号，拉起微信收银台 / 展示支付二维码<span class="dir">← 返回支付参数</span></div></div>
+    <div class="lane"><div class="msg"><b>3</b>调用微信支付下单 API<br>校验签名 → 创建订单<span class="dir">← 返回 prepay_id / code_url</span></div></div>
+
+    <div class="lane"></div>
+    <div class="lane"><div class="msg"><b>4</b>微信内完成付款（指纹/密码确认）<span class="dir">↓ 支付完成</span></div></div>
+    <div class="lane"></div>
+    <div class="lane"><div class="msg"><b>5</b>微信支付结果通知回调 → 后端校验并确认订单<span class="dir">→ /pay/callback</span></div></div>
+
+    <div class="lane"></div>
+    <div class="lane"><div class="msg"><b>6</b>App 轮询订单状态<span class="dir">→ GET /pay/status</span></div></div>
+    <div class="lane"><div class="msg"><b>7</b>查询微信订单 API，确认交易成功<span class="dir">← trade_state = SUCCESS</span></div></div>
+    <div class="lane"></div>
+
+    <div class="lane"></div>
+    <div class="lane"><div class="msg"><b>8</b>🎉 支付成功提示，自动解锁 Word/PDF 导出<span class="dir">会员权益即时生效</span></div></div>
+    <div class="lane"></div>
+    <div class="lane"></div>
+  </div>
+
+  <div class="foot">安全说明：微信支付 APIv3 双向证书签名校验，订单状态以后端查询微信支付官方 API 为准，回调双重确认，保障资金安全</div>
+</div>
+
+<!-- ============ 图3：功能架构与商业模式 ============ -->
+<div class="page">
+  <div class="hd">
+    <div class="logo">🏗️</div>
+    <div>
+      <h1>职简 · 功能架构与商业模式</h1>
+      <div class="sub">四大核心模块 + 后端服务支撑</div>
+    </div>
+  </div>
+  <div class="rule"></div>
+
+  <div class="arch">
+    <div class="mod">
+      <div class="ic">✍️</div>
+      <h3>写简历</h3>
+      <ul><li>结构化表单录入</li><li>AI 一键润色文案</li><li>实时 A4 预览</li></ul>
+    </div>
+    <div class="mod">
+      <div class="ic">🎨</div>
+      <h3>模板中心</h3>
+      <ul><li>32 套专业模板</li><li>极简/商务/现代风格</li><li>一键切换</li></ul>
+    </div>
+    <div class="mod">
+      <div class="ic">📤</div>
+      <h3>导出中心</h3>
+      <ul><li>PNG 图片（免费）</li><li>Word 文档（会员）</li><li>PDF 文档（会员）</li></ul>
+    </div>
+    <div class="mod">
+      <div class="ic">👤</div>
+      <h3>我的 · 会员</h3>
+      <ul><li>多份简历库</li><li>会员状态管理</li><li>套餐购买/续费</li></ul>
+    </div>
+  </div>
+
+  <div class="backend">
+    <div>
+      <h3>🤖 AI 能力</h3>
+      <div class="srv">DeepSeek 大模型<small>简历文案智能润色</small></div>
+    </div>
+    <div>
+      <h3>💳 支付能力</h3>
+      <div class="srv">微信支付 APIv3<small>Native 扫码 / APP 支付</small></div>
+    </div>
+    <div>
+      <h3>☁️ 部署架构</h3>
+      <div class="srv">阿里云函数计算 FC<small>国内稳定访问 · 免运维</small></div>
+    </div>
+  </div>
+
+  <div class="foot">商业模式：免费工具引流 → 求职高频刚需 → 导出增值服务付费（单次/包月/包年三级会员）→ 微信支付即时变现，形成「工具-会员-支付」完整商业闭环</div>
+</div>
+
+</body>
+</html>
