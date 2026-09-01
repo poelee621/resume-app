@@ -9,11 +9,13 @@
  *   WX_API_V3_KEY      APIv3 密钥（32 位）
  *   WX_PRIVATE_KEY     商户 API 私钥（PEM，\n 要换成真实换行，可粘贴整段）
  *   WX_APP_ID          公众号 AppID
+ *   WX_APP_APPID       微信开放平台 AppID（APP 支付专用，与公众号 AppID 不同；未配置时 /pay/app-create 返回明确错误）
  *   PORT               自定义运行时监听端口，默认 9000
  *
  * 路由：
  *   POST /chat        → DeepSeek 代理
  *   POST /pay/create  → 微信支付 Native 下单（返回 code_url + out_trade_no）
+ *   POST /pay/app-create → 微信支付 APP 下单（返回调起参数 payParams，App 内直接拉起微信收银台）
  *   GET  /pay/status  → 查微信支付订单状态（out_trade_no）
  *   POST /pay/callback→ 微信支付回调（无状态：以查询 API 为准）
  *   GET  /health      → 健康检查
@@ -127,6 +129,59 @@ async function payStatus(outTradeNo) {
   return { ok: true, paid: data.trade_state === "SUCCESS", state: data.trade_state };
 }
 
+/* ---------------- 微信支付：APP 下单（App 内直接拉起微信收银台，无需扫码） ---------------- */
+async function payAppCreate(plan, origin) {
+  if (!ENV.WX_APP_APPID) {
+    return { ok: false, error: "未配置开放平台 AppID（WX_APP_APPID）。需先在微信开放平台注册 App（企业认证）并开通 APP 支付产品" };
+  }
+  const prices = { once: 990, month: 4900, year: 8900 }; // 分
+  const price = prices[plan];
+  if (!price) return { ok: false, error: "未知套餐" };
+  const desc = { once: "单次解锁", month: "包月会员", year: "体验包年" }[plan];
+  const ts = Date.now();
+  const outTradeNo = `RS${ts}${Math.floor(Math.random() * 10000)}`;
+  const body = {
+    appid: ENV.WX_APP_APPID,
+    mchid: ENV.WX_MCH_ID,
+    description: `简历-${desc}`,
+    out_trade_no: outTradeNo,
+    notify_url: `${origin}/pay/callback`,
+    amount: { total: price, currency: "CNY" },
+  };
+  const bodyStr = JSON.stringify(body);
+  const resp = await fetch("https://api.mch.weixin.qq.com/v3/pay/transactions/app", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: await wxAuth("POST", "/v3/pay/transactions/app", bodyStr),
+    },
+    body: bodyStr,
+  });
+  const data = await resp.json();
+  if (!resp.ok) return { ok: false, status: resp.status, error: data?.message || "APP 下单失败" };
+  /* 二次签名：用商户私钥对 appId\npartnerId\nprepayId\nnonceStr\ntimeStamp\npackage\n 签名（调起参数） */
+  const prepayId = data.prepay_id;
+  const nonceStr = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  const timeStamp = String(Math.floor(Date.now() / 1000));
+  const packageVal = "Sign=WXPay";
+  const signStr = [ENV.WX_APP_APPID, ENV.WX_MCH_ID, prepayId, nonceStr, timeStamp, packageVal].join("\n") + "\n";
+  const sign = await signRSA(ENV.WX_PRIVATE_KEY, signStr);
+  return {
+    ok: true,
+    out_trade_no: outTradeNo,
+    payParams: {
+      appid: ENV.WX_APP_APPID,
+      partnerid: ENV.WX_MCH_ID,
+      prepayid: prepayId,
+      package: packageVal,
+      noncestr: nonceStr,
+      timestamp: timeStamp,
+      sign,
+    },
+  };
+}
+
 /* ---------------- 核心：路由分发（FC event → json response） ---------------- */
 async function handleEvent(evt) {
   const method = (evt.httpMethod || evt.method || "GET").toUpperCase();
@@ -151,6 +206,10 @@ async function handleEvent(evt) {
     if (urlPath === "/pay/create" && method === "POST") {
       const b = body ? JSON.parse(body) : {};
       return json(await payCreate(b.plan, origin));
+    }
+    if (urlPath === "/pay/app-create" && method === "POST") {
+      const b = body ? JSON.parse(body) : {};
+      return json(await payAppCreate(b.plan, origin));
     }
     if (urlPath === "/pay/status" && method === "GET") {
       const outTradeNo = getQuery("out_trade_no") || getQuery("outTradeNo");
