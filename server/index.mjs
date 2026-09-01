@@ -1,5 +1,5 @@
 /**
- * 简历 App 后端 —— 阿里云函数计算（FC）版本
+ * 简历 App 后端 —— 阿里云函数计算 FC 3.0 自定义运行时版（HTTP Server 模式）
  * 无状态设计：不依赖 KV/数据库（订单状态直接查微信支付订单 API）
  *
  * 环境变量（函数计算控制台配置）：
@@ -7,15 +7,20 @@
  *   WX_MCH_ID          微信支付商户号
  *   WX_CERT_SERIAL     商户证书序列号
  *   WX_API_V3_KEY      APIv3 密钥（32 位）
- *   WX_PRIVATE_KEY     商户 API 私钥（PEM，\n 要换成真实换行或用 \\n 转义）
+ *   WX_PRIVATE_KEY     商户 API 私钥（PEM，\n 要换成真实换行，可粘贴整段）
  *   WX_APP_ID          公众号 AppID
+ *   PORT               自定义运行时监听端口，默认 9000
  *
  * 路由：
  *   POST /chat        → DeepSeek 代理
  *   POST /pay/create  → 微信支付 Native 下单（返回 code_url + out_trade_no）
  *   GET  /pay/status  → 查微信支付订单状态（out_trade_no）
- *   POST /pay/callback→ 微信支付回调（直接返回 SUCCESS，状态以查询 API 为准）
+ *   POST /pay/callback→ 微信支付回调（无状态：以查询 API 为准）
  *   GET  /health      → 健康检查
+ *
+ * 启动：node index.mjs
+ * - 阿里云 FC 自定义运行时：自动监听 PORT（默认 9000）
+ * - 本地开发：相同命令，监听 9000
  */
 
 const ENV = process.env;
@@ -51,6 +56,16 @@ async function wxAuth(method, urlPath, bodyStr) {
   const signStr = `${method}\n${urlPath}\n${ts}\n${nonce}\n${bodyStr}\n`;
   const signature = await signRSA(ENV.WX_PRIVATE_KEY, signStr);
   return `WECHATPAY2-SHA256-RSA2048 mchid="${ENV.WX_MCH_ID}",nonce_str="${nonce}",signature="${signature}",timestamp="${ts}",serial_no="${ENV.WX_CERT_SERIAL}"`;
+}
+
+/* headers 不分大小写读取 */
+function getHeader(headers, name) {
+  if (!headers) return "";
+  const k = name.toLowerCase();
+  for (const hk of Object.keys(headers)) {
+    if (hk.toLowerCase() === k) return headers[hk];
+  }
+  return "";
 }
 
 /* ---------------- AI：DeepSeek 代理 ---------------- */
@@ -110,37 +125,82 @@ async function payStatus(outTradeNo) {
   return { ok: true, paid: data.trade_state === "SUCCESS", state: data.trade_state };
 }
 
-/* ---------------- 入口（阿里云 FC HTTP 触发器） ---------------- */
-export const handler = async (event, context, callback) => {
+/* ---------------- 核心：路由分发（FC event → json response） ---------------- */
+async function handleEvent(evt) {
+  const method = (evt.httpMethod || evt.method || "GET").toUpperCase();
+  const urlPath = evt.path || evt.url || "/";
+  const body = evt.body
+    ? (evt.isBase64Encoded ? Buffer.from(evt.body, "base64").toString() : evt.body.toString())
+    : "";
+  const host = getHeader(evt.headers, "host") || "resume-api";
+  const origin = `https://${host}`;
+  const q = evt.queryParameters || evt.queryStringParameters || {};
+  const getQuery = (k) => q[k] || q[k.toLowerCase()];
+
   try {
-    const evt = typeof event === "string" || Buffer.isBuffer(event) ? JSON.parse(event.toString()) : event;
-    const method = (evt.httpMethod || evt.method || "GET").toUpperCase();
-    const path = evt.path || "/";
-    const body = evt.body ? (evt.isBase64Encoded ? Buffer.from(evt.body, "base64").toString() : evt.body) : "";
-    const origin = `https://${(evt.headers || {})["host"] || "resume-api"}`;
+    if (method === "OPTIONS") return json({ ok: true });
+    if (urlPath === "/health" || urlPath === "/healthz")
+      return json({ ok: true, ts: Date.now(), service: "resume-api-aliyun-fc" });
 
-    if (method === "OPTIONS") return callback(null, json({ ok: true }));
-    if (path === "/health") return callback(null, json({ ok: true, ts: Date.now(), service: "resume-api-aliyun-fc" }));
-
-    if (path === "/chat" && method === "POST") {
-      const b = JSON.parse(body || "{}");
-      return callback(null, json(await chat(b.messages, b.temperature, b.max_tokens)));
+    if (urlPath === "/chat" && method === "POST") {
+      const b = body ? JSON.parse(body) : {};
+      return json(await chat(b.messages, b.temperature, b.max_tokens));
     }
-    if (path === "/pay/create" && method === "POST") {
-      const b = JSON.parse(body || "{}");
-      return callback(null, json(await payCreate(b.plan, origin)));
+    if (urlPath === "/pay/create" && method === "POST") {
+      const b = body ? JSON.parse(body) : {};
+      return json(await payCreate(b.plan, origin));
     }
-    if (path === "/pay/status" && method === "GET") {
-      const q = evt.queryParameters || {};
-      const outTradeNo = q.out_trade_no || q["out_trade_no"];
-      return callback(null, json(await payStatus(outTradeNo)));
+    if (urlPath === "/pay/status" && method === "GET") {
+      const outTradeNo = getQuery("out_trade_no") || getQuery("outTradeNo");
+      return json(await payStatus(outTradeNo));
     }
-    if (path === "/pay/callback" && method === "POST") {
-      /* 无状态：状态以订单查询 API 为准，这里直接确认收到 */
-      return callback(null, json({ code: "SUCCESS", message: "成功" }));
+    if (urlPath === "/pay/callback" && method === "POST") {
+      /* 无状态：状态以订单查询 API 为准 */
+      return json({ code: "SUCCESS", message: "成功" });
     }
-    return callback(null, json({ ok: false, error: "not found: " + path }, 404));
+    return json({ ok: false, error: "not found: " + urlPath }, 404);
   } catch (e) {
-    return callback(null, json({ ok: false, error: e.message }, 500));
+    return json({ ok: false, error: e.message }, 500);
   }
-};
+}
+
+/* ---------------- HTTP Server（自定义运行时要求） ---------------- */
+/* 任意来源 HTTP 请求 → 转 FC event → handleEvent → 写回响应 */
+function startHttpServer(port) {
+  const server = require("node:http").createServer(async (req, res) => {
+    try {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const bodyBuf = Buffer.concat(chunks);
+      const url = req.url || "/";
+      const event = {
+        path: url.split("?")[0],
+        httpMethod: req.method,
+        headers: req.headers,
+        body: bodyBuf.toString(),
+        isBase64Encoded: false,
+        queryParameters: Object.fromEntries(new URL(url, `http://${req.headers.host}`).searchParams),
+      };
+      const result = await handleEvent(event);
+      res.statusCode = result.statusCode || 200;
+      const headers = result.headers || {};
+      for (const [k, v] of Object.entries(headers)) {
+        if (k.toLowerCase() === "set-cookie") continue; // 多值，跳过避免报错
+        res.setHeader(k, v);
+      }
+      res.end(result.body);
+    } catch (e) {
+      res.statusCode = 500;
+      res.setHeader("Content-Type", "application/json;charset=utf-8");
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+  });
+  server.listen(port, () => console.log(`resume-api listening on :${port}`));
+}
+
+/* 启动 */
+const PORT = +(ENV.PORT || ENV.FC_SERVER_PORT || 9000);
+startHttpServer(PORT);
+
+/* 同时也 export handler（兼容其他触发场景/本地测试） */
+export const handler = async (event) => handleEvent(event);
