@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI简历工坊 - A4 简历制作 · AI 智能润色</title>
+<meta name="description" content="AI简历工坊：专业 A4 简历制作工具，AI 智能润色 + 32 套专业模板 + 一键导出 Word/PDF/图片，求职提效第一站。">
+<link rel="icon" href="assets/logo.png" type="image/png">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;color:#1d2129;background:#fff;line-height:1.6}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+
+  /* 顶栏 */
+  .nav{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border-bottom:1px solid #eef0f6}
+  .nav .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+  .brand{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:800}
+  .brand img{width:36px;height:36px;border-radius:9px}
+  .brand span b{color:#6C5CE7}
+  .nav .btn{background:#6C5CE7;color:#fff;padding:9px 22px;border-radius:999px;font-size:14px;font-weight:600;transition:.2s}
+  .nav .btn:hover{background:#5a49d6}
+
+  /* Hero */
+  .hero{background:linear-gradient(135deg,#1e1b4b 0%,#3730a3 55%,#6C5CE7 100%);color:#fff;padding:88px 0 72px;position:relative;overflow:hidden}
+  .hero::after{content:"";position:absolute;right:-120px;top:-120px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(166,107,255,.35),transparent 65%)}
+  .hero .wrap{position:relative;z-index:2}
+  .hero .badge{display:inline-block;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);padding:6px 16px;border-radius:999px;font-size:13px;margin-bottom:22px;letter-spacing:1px}
+  .hero h1{font-size:52px;font-weight:900;letter-spacing:1px;line-height:1.2}
+  .hero h1 em{font-style:normal;background:linear-gradient(90deg,#ffd166,#ff9f43);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{font-size:18px;opacity:.88;margin:18px 0 34px;max-width:560px}
+  .hero .actions{display:flex;gap:16px;flex-wrap:wrap}
+  .hero .btn-main{background:#fff;color:#3730a3;padding:14px 34px;border-radius:999px;font-size:16px;font-weight:800;transition:.2s;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+  .hero .btn-main:hover{transform:translateY(-2px)}
+  .hero .btn-ghost{border:2px solid rgba(255,255,255,.5);color:#fff;padding:12px 30px;border-radius:999px;font-size:16px;font-weight:600;transition:.2s}
+  .hero .btn-ghost:hover{background:rgba(255,255,255,.12)}
+  .hero .stats{display:flex;gap:44px;margin-top:52px}
+  .hero .stats div{font-size:15px;opacity:.85}
+  .hero .stats b{display:block;font-size:28px;font-weight:900;opacity:1;color:#fff}
+
+  /* 功能 */
+  .feat{padding:80px 0}
+  .sec-t{text-align:center;margin-bottom:48px}
+  .sec-t h2{font-size:32px;font-weight:800}
+  .sec-t p{color:#8a909c;margin-top:10px;font-size:15px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:20px}
+  .card{background:#f8f9fe;border:2px solid #eceef7;border-radius:16px;padding:26px 22px;transition:.2s}
+  .card:hover{border-color:#6C5CE7;transform:translateY(-4px);box-shadow:0 10px 28px rgba(108,92,231,.1)}
+  .card .ic{width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,#6C5CE7,#a66bff);display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:14px}
+  .card h3{font-size:17px;font-weight:700;margin-bottom:8px}
+  .card p{font-size:13.5px;color:#5b6080;line-height:1.75}
+
+  /* 流程图区 */
+  .flow-sec{background:#f6f7fb;padding:72px 0}
+  .flow-img{max-width:100%;border-radius:14px;box-shadow:0 14px 40px rgba(30,27,75,.14);border:1px solid #e5e7f0;display:block;margin:0 auto}
+
+  /* 下载 */
+  .dl{padding:80px 0}
+  .dl-card{background:linear-gradient(135deg,#f8f9fe,#eef0ff);border:2px solid #d9ddf7;border-radius:20px;padding:44px;display:flex;gap:40px;align-items:center;flex-wrap:wrap}
+  .dl-card .info{flex:1;min-width:260px}
+  .dl-card h2{font-size:26px;font-weight:800;margin-bottom:10px}
+  .dl-card p{color:#5b6080;font-size:15px}
+  .dl-card .dl-btns{display:flex;gap:14px;flex-wrap:wrap}
+  .dl-btn{display:flex;flex-direction:column;align-items:center;gap:2px;background:#fff;border:2px solid #e5e7f0;border-radius:14px;padding:14px 26px;min-width:150px;transition:.2s}
+  .dl-btn:hover{border-color:#6C5CE7;transform:translateY(-3px);box-shadow:0 8px 20px rgba(108,92,231,.12)}
+  .dl-btn b{font-size:15px}
+  .dl-btn small{color:#8a909c;font-size:12px}
+  .dl-btn.soon{opacity:.55;cursor:default}
+
+  /* 定价 */
+  .price-sec{background:#fff;padding:72px 0 84px}
+  .price-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px;max-width:860px;margin:0 auto}
+  .price{background:#fff;border:2px solid #eceef7;border-radius:16px;padding:28px 24px;text-align:center}
+  .price.hot{border-color:#6C5CE7;box-shadow:0 12px 32px rgba(108,92,231,.14);position:relative}
+  .price .hot-tag{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#6C5CE7,#a66bff);color:#fff;font-size:12px;padding:3px 14px;border-radius:999px;font-weight:700}
+  .price h3{font-size:16px;font-weight:700;color:#4a3fc0}
+  .price .amt{font-size:34px;font-weight:900;margin:10px 0 2px}
+  .price .amt small{font-size:14px;font-weight:400;color:#8a909c}
+  .price p{font-size:13px;color:#8a909c;margin-bottom:14px}
+  .price ul{list-style:none;text-align:left;font-size:13px;color:#5b6080;line-height:2.1}
+  .price ul li::before{content:"✓ ";color:#10b981;font-weight:800}
+
+  /* 底部 */
+  footer{background:#1e1b4b;color:rgba(255,255,255,.7);padding:36px 0;font-size:13px}
+  footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+  footer a{color:#a66bff}
+  footer a:hover{text-decoration:underline}
+
+  @media (max-width:640px){
+    .hero h1{font-size:36px}
+    .hero{padding:60px 0 52px}
+    .dl-card{padding:28px 20px}
+  }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="wrap">
+    <div class="brand"><img src="assets/logo.png" alt="AI简历工坊"><span>AI<b>简历工坊</b></span></div>
+    <a class="btn" href="#dl">立即下载</a>
+  </div>
+</div>
+
+<section class="hero">
+  <div class="wrap">
+    <div class="badge">📄 A4 真文档流 · AI 智能润色 · 一键导出</div>
+    <h1>做一份能打动<br>面试官的<em>简历</em></h1>
+    <p>AI简历工坊 —— 专业 A4 简历制作工具。结构化录入 + AI 一键润色 + 32 套专业模板，免费导出图片，Word/PDF 会员解锁，求职提效第一站。</p>
+    <div class="actions">
+      <a class="btn-main" href="#dl">📱 立即下载</a>
+      <a class="btn-ghost" href="#feat">了解功能</a>
+    </div>
+    <div class="stats">
+      <div><b>32</b>套 A4 专业模板</div>
+      <div><b>AI</b>一键润色文案</div>
+      <div><b>3</b>种格式导出</div>
+    </div>
+  </div>
+</section>
+
+<section class="feat" id="feat">
+  <div class="wrap">
+    <div class="sec-t"><h2>核心功能</h2><p>从填写到投递，一站式搞定</p></div>
+    <div class="grid">
+      <div class="card"><div class="ic">✍️</div><h3>结构化录入</h3><p>基本信息 / 工作经历 / 项目经验 / 技能 / 获奖 / 兴趣，分步填写不遗漏</p></div>
+      <div class="card"><div class="ic">🤖</div><h3>AI 智能润色</h3><p>DeepSeek 大模型一键优化工作与项目描述，让经历更有说服力</p></div>
+      <div class="card"><div class="ic">🎨</div><h3>32 套专业模板</h3><p>极简 / 商务 / 现代风格，真文档流 A4 排版，一键切换实时预览</p></div>
+      <div class="card"><div class="ic">📤</div><h3>多格式导出</h3><p>图片 PNG 免费导出，Word / PDF 会员解锁，投递、打印、存档都方便</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="flow-sec">
+  <div class="wrap">
+    <div class="sec-t"><h2>核心业务流程</h2><p>填写 → AI 润色 → 选模板 → 导出，免费使用 + 增值付费</p></div>
+    <img class="flow-img" src="assets/flow.png" alt="AI简历工坊核心业务流程">
+  </div>
+</section>
+
+<section class="price-sec">
+  <div class="wrap">
+    <div class="sec-t"><h2>简单透明的定价</h2><p>基础功能永久免费，导出增值服务按需付费</p></div>
+    <div class="price-grid">
+      <div class="price">
+        <h3>🖼 图片导出</h3>
+        <div class="amt">免费</div>
+        <p>PNG 高清简历图片</p>
+        <ul><li>保存到手机相册</li><li>直接投递 / 分享</li></ul>
+      </div>
+      <div class="price hot">
+        <div class="hot-tag">🔥 推荐</div>
+        <h3>📄 Word / PDF 导出</h3>
+        <div class="amt">¥9.9<small> 起</small></div>
+        <p>单次 / 包月 / 包年灵活选择</p>
+        <ul><li>Word 可编辑文档</li><li>PDF 高清打印</li><li>微信支付即时到账</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="dl" id="dl">
+  <div class="wrap">
+    <div class="dl-card">
+      <div class="info">
+        <h2>📱 下载 AI简历工坊</h2>
+        <p>Android 版已开放下载（APK 安装包）。iOS 版正在加紧上架 App Store，敬请期待。</p>
+      </div>
+      <div class="dl-btns">
+        <a class="dl-btn" href="https://github.com/poelee621/resume-app/releases/latest" target="_blank" rel="noopener">
+          <b>🤖 Android 版</b><small>APK 下载 · 点击获取</small>
+        </a>
+        <div class="dl-btn soon"><b>🍎 iOS 版</b><small>App Store 即将上架</small></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>© 2026 AI简历工坊 · 宁波烯冷新能源科技有限公司</div>
+    <div><a href="privacy.html" target="_blank">隐私政策</a> · <a href="https://github.com/poelee621/resume-app" target="_blank" rel="noopener">开源主页</a></div>
+  </div>
+</footer>
+
+</body>
+</html>
