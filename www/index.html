@@ -1617,8 +1617,8 @@ $("maskPay").onclick=e=>{if(e.target===$("maskPay"))hidePayMask();};
 $("maskName").onclick=e=>{if(e.target===$("maskName"))$("maskName").classList.remove("show");};
 
 /* ====================== AI 润色（真 AI：resume-api Worker 代理 DeepSeek；失败自动降级本地模板） ====================== */
-/* 部署 resume-api Worker 后把域名填进 AI_WORKER_URL（保留末尾 /，如 "https://resume-api.xxx.workers.dev/"） */
-const AI_WORKER_URL=""; /* TODO: 坡哥 wrangler deploy 后填入 */
+/* 部署 resume-api 后端后把 URL 填进 AI_WORKER_URL（保留末尾 /，如 "https://abc.fcapp.run/"） */
+const AI_WORKER_URL="https://resume-api-v-vzmoobafoo.cn-hangzhou.fcapp.run/";
 async function callAI(system,user){
   const base=AI_WORKER_URL||"https://resume-api.1012425851.workers.dev/";
   try{

@@ -23,6 +23,8 @@
  * - 本地开发：相同命令，监听 9000
  */
 
+import { createServer } from "node:http";
+
 const ENV = process.env;
 const CORS = {
   "Content-Type": "application/json;charset=utf-8",
@@ -167,7 +169,7 @@ async function handleEvent(evt) {
 /* ---------------- HTTP Server（自定义运行时要求） ---------------- */
 /* 任意来源 HTTP 请求 → 转 FC event → handleEvent → 写回响应 */
 function startHttpServer(port) {
-  const server = require("node:http").createServer(async (req, res) => {
+  const server = createServer(async (req, res) => {
     try {
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
