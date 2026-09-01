@@ -51,3 +51,15 @@ jobs:
           name: resume-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
+
+      - name: Publish GitHub Release (官网下载入口)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="apk-$(date -u +%Y%m%d-%H%M%S)"
+          gh release create "$TAG" \
+            "android/app/build/outputs/apk/debug/app-debug.apk" \
+            --repo "${{ github.repository }}" \
+            --title "AI简历工坊 Android 版（$TAG）" \
+            --notes "AI简历工坊 Android 安装包（debug 构建）。官网下载入口：https://poelee621.github.io/resume-app/" \
+            --latest 2>/dev/null || echo "release already exists"
