@@ -18,6 +18,10 @@
  *   POST /pay/app-create → 微信支付 APP 下单（返回调起参数 payParams，App 内直接拉起微信收银台）
  *   GET  /pay/status  → 查微信支付订单状态（out_trade_no）
  *   POST /pay/callback→ 微信支付回调（无状态：以查询 API 为准）
+ *   POST /auth/send-code → 手机号验证码（dev 模式直接返回 devCode，配 SMS_WEBHOOK 后走 webhook）
+ *   POST /auth/login  → 手机号+验证码换 token
+ *   GET  /auth/me     → token 换手机号（启动恢复登录态）
+ *   POST /auth/logout → 注销 token
  *   GET  /health      → 健康检查
  *
  * 启动：node index.mjs
@@ -182,6 +186,88 @@ async function payAppCreate(plan, origin) {
   };
 }
 
+/* ---------------- 登录：内存验证码 + 会话（MVP 无 DB，单实例内存） ---------------- */
+/* ⚠️ 生产注意：
+   1. FC 冷启动/多实例时内存会丢 → 验证码重发、token 失效重登即可（无感知）
+   2. 真短信：配置 SMS_WEBHOOK 环境变量（http(s) 地址），服务端会 POST {phone, code} 到该地址；
+      未配置时进入 dev 模式，验证码直接在响应里返回（devCode），方便真机联调
+   3. 正式接入阿里云短信：申请签名+模板后，在 sendSms 里实现（需 AccessKey + 计算签名） */
+const codeStore = new Map();   // phone -> { code, exp, lastSent }
+const sessStore = new Map();   // token  -> { phone, exp }
+const CODE_TTL = 5 * 60 * 1000;
+const SEND_COOLDOWN = 60 * 1000;
+const SESS_TTL = 90 * 24 * 3600 * 1000; // 90 天
+
+const PHONE_RE = /^1\d{10}$/;
+
+function maskPhone(phone) {
+  return phone ? phone.slice(0, 3) + "****" + phone.slice(7) : "";
+}
+
+/* 验证码 → 短信（dev 模式直接返回，配 SMS_WEBHOOK 走 webhook） */
+async function deliverSms(phone, code) {
+  const webhook = ENV.SMS_WEBHOOK;
+  if (!webhook) return { devMode: true, code };
+  try {
+    const resp = await fetch(webhook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, code, ts: Date.now() }),
+    });
+    if (!resp.ok) throw new Error("webhook status " + resp.status);
+    return { devMode: false };
+  } catch (e) {
+    /* webhook 失败也退回 dev 模式，避免把测试者卡死 */
+    return { devMode: true, code, error: e.message };
+  }
+}
+
+async function sendCode(phone) {
+  if (!phone || !PHONE_RE.test(phone)) return { ok: false, error: "手机号格式不正确" };
+  const now = Date.now();
+  const prev = codeStore.get(phone);
+  if (prev && now - prev.lastSent < SEND_COOLDOWN) {
+    const wait = Math.ceil((SEND_COOLDOWN - (now - prev.lastSent)) / 1000);
+    return { ok: false, error: `发送太频繁，请 ${wait} 秒后再试`, retryAfter: wait };
+  }
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  codeStore.set(phone, { code, exp: now + CODE_TTL, lastSent: now });
+  const sms = await deliverSms(phone, code);
+  const ret = { ok: true, ttl: CODE_TTL / 1000, cooldown: SEND_COOLDOWN / 1000 };
+  if (sms.devMode) ret.devCode = code; // 仅 dev 模式回传，方便测试
+  return ret;
+}
+
+function login(phone, code) {
+  if (!phone || !PHONE_RE.test(phone)) return { ok: false, error: "手机号格式不正确" };
+  const rec = codeStore.get(phone);
+  if (!rec || !code || rec.code !== String(code).trim()) return { ok: false, error: "验证码错误" };
+  if (Date.now() > rec.exp) {
+    codeStore.delete(phone);
+    return { ok: false, error: "验证码已过期，请重新获取" };
+  }
+  codeStore.delete(phone); // 用后即焚
+  const token = "t_" + crypto.randomUUID().replace(/-/g, "") + Math.random().toString(36).slice(2, 10);
+  sessStore.set(token, { phone, exp: Date.now() + SESS_TTL });
+  return { ok: true, token, phone, maskPhone: maskPhone(phone), expiresAt: Date.now() + SESS_TTL };
+}
+
+function me(token) {
+  if (!token) return { ok: false, error: "未登录", code: "NO_AUTH" };
+  const rec = sessStore.get(token);
+  if (!rec) return { ok: false, error: "登录已失效", code: "NO_AUTH" };
+  if (Date.now() > rec.exp) {
+    sessStore.delete(token);
+    return { ok: false, error: "登录已过期", code: "NO_AUTH" };
+  }
+  return { ok: true, phone: rec.phone, maskPhone: maskPhone(rec.phone), expiresAt: rec.exp };
+}
+
+function logout(token) {
+  if (token) sessStore.delete(token);
+  return { ok: true };
+}
+
 /* ---------------- 核心：路由分发（FC event → json response） ---------------- */
 async function handleEvent(evt) {
   const method = (evt.httpMethod || evt.method || "GET").toUpperCase();
@@ -218,6 +304,25 @@ async function handleEvent(evt) {
     if (urlPath === "/pay/callback" && method === "POST") {
       /* 无状态：状态以订单查询 API 为准 */
       return json({ code: "SUCCESS", message: "成功" });
+    }
+    /* ------- 登录 / 会话 ------- */
+    if (urlPath === "/auth/send-code" && method === "POST") {
+      const b = body ? JSON.parse(body) : {};
+      return json(await sendCode(b.phone));
+    }
+    if (urlPath === "/auth/login" && method === "POST") {
+      const b = body ? JSON.parse(body) : {};
+      return json(login(b.phone, b.code));
+    }
+    if (urlPath === "/auth/me" && (method === "GET" || method === "POST")) {
+      const auth = getHeader(evt.headers, "authorization") || "";
+      const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+      return json(me(token));
+    }
+    if (urlPath === "/auth/logout" && method === "POST") {
+      const auth = getHeader(evt.headers, "authorization") || "";
+      const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+      return json(logout(token));
     }
     return json({ ok: false, error: "not found: " + urlPath }, 404);
   } catch (e) {

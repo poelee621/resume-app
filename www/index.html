@@ -730,6 +730,21 @@ textarea:focus{border-color:var(--brand)}
 .id-photo-info .t2{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.5}
 .id-photo-info .t2 .del{cursor:pointer;color:#d64040;font-weight:700;margin-left:6px;-webkit-tap-highlight-color:transparent}
 
+/* ====================== 证件照引用 + 账号登录（我的页） ====================== */
+.idref-btn{display:inline-block;font-size:11.5px;font-weight:700;color:var(--brand);background:#f3f0ff;border:1px solid #ddd3ff;border-radius:9px;padding:5px 12px;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent;transition:transform .15s}
+.idref-btn:active{transform:scale(.94)}
+.idref-btn.done{color:#1f9d55;background:#e6f7ee;border-color:#bfe9d3}
+.auth-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:13px 14px;margin-bottom:14px;display:flex;gap:12px;align-items:center}
+.auth-card .auth-ic{width:52px;height:52px;border-radius:12px;background:linear-gradient(135deg,#eceff7,#dfe5f0);display:flex;align-items:center;justify-content:center;font-size:24px;flex:0 0 auto}
+.auth-card .auth-info{flex:1;min-width:0}
+.auth-card .t1{font-size:14px;font-weight:800;color:var(--ink)}
+.auth-card .t2{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.5}
+.code-row{display:flex;gap:10px;margin-bottom:14px}
+.code-row input{flex:1;margin-bottom:0}
+.code-btn{flex:0 0 auto;font-size:12.5px;font-weight:700;color:var(--brand);background:#f3f0ff;border:1px solid #ddd3ff;border-radius:11px;padding:12px 14px;cursor:pointer;user-select:none;white-space:nowrap;transition:transform .15s}
+.code-btn:active{transform:scale(.95)}
+.code-btn.disabled{color:#a5abb6;background:#f0f1f4;border-color:var(--line);pointer-events:none}
+
 /* ====================== 弹窗（命名 / 付费） ====================== */
 .mask{position:absolute;inset:0;background:rgba(15,18,26,.55);z-index:80;display:none;align-items:flex-end;justify-content:center}
 .mask.show{display:flex}
@@ -829,6 +844,9 @@ textarea:focus{border-color:var(--brand)}
             <div class="ava-info">
               <div class="sec-title">基本信息</div>
               <div class="sub">点 <b>＋</b> 上传头像（可选）· 不传也能用</div>
+              <div id="idPhotoRefWrap" style="display:none;margin-top:7px">
+                <span class="idref-btn" id="btnUseIdPhoto">📷 引用我的证件照</span>
+              </div>
             </div>
             <input type="file" id="photoFile" accept="image/*" style="display:none">
           </div>
@@ -911,6 +929,25 @@ textarea:focus{border-color:var(--brand)}
     <section class="page" id="pageMine">
       <div class="page-head"><div><div class="title">我的简历</div><div class="sub">多份简历按目标公司分开 · 随时打开修改下载</div></div></div>
       <div class="page-body">
+        <!-- 账号登录 -->
+        <section class="auth-card" id="authCard">
+          <div id="authNotLogin">
+            <div class="auth-ic">📱</div>
+            <div class="auth-info">
+              <div class="t1">手机号登录</div>
+              <div class="t2">登录后开启云端同步 · 简历 &amp; 会员跨设备可用</div>
+              <div class="btn primary" id="btnOpenLogin" style="margin-top:9px;font-size:12px;padding:9px 0">登录 / 注册</div>
+            </div>
+          </div>
+          <div id="authLoggedIn" style="display:none">
+            <div class="auth-ic" style="background:linear-gradient(135deg,#d8f5e5,#b9ecd0);color:#1f9d55">✔</div>
+            <div class="auth-info">
+              <div class="t1">已登录</div>
+              <div class="t2" id="authPhone">138****8000</div>
+            </div>
+            <span class="idref-btn" id="btnLogout" style="flex:0 0 auto">退出</span>
+          </div>
+        </section>
         <!-- 证件照管理 -->
         <section class="id-photo-card" id="idPhotoCard">
           <div class="id-photo-pick" id="idPhotoPick">
@@ -934,6 +971,21 @@ textarea:focus{border-color:var(--brand)}
     <div class="tab" data-p="pageMine"><span class="ic">👤</span>我的</div>
   </div>
   <div class="toast" id="toast"></div>
+</div>
+
+<!-- 登录弹窗 -->
+<div class="mask" id="maskLogin">
+  <div class="sheet">
+    <div class="tt">手机号登录</div>
+    <div class="st">未注册手机号验证后自动注册 · 登录后可云端同步</div>
+    <input id="loginPhone" type="tel" maxlength="11" placeholder="请输入手机号" autocomplete="tel">
+    <div class="code-row">
+      <input id="loginCode" type="text" inputmode="numeric" maxlength="6" placeholder="6 位验证码" autocomplete="one-time-code">
+      <span class="code-btn" id="btnSendCode">发送验证码</span>
+    </div>
+    <div class="btn primary" id="btnLoginOk" style="margin-top:2px">登录</div>
+    <div class="pay-note" id="loginHint">验证码 5 分钟内有效 · 登录即代表同意《用户协议》</div>
+  </div>
 </div>
 
 <!-- 命名弹窗 -->
@@ -1870,6 +1922,7 @@ function delIdPhoto(){
   localStorage.removeItem("idPhoto_v1");
   renderIdPhoto(null);
   toast("已删除证件照");
+  if(window.__idPhotoChanged)window.__idPhotoChanged();
 }
 function setupIdPhoto(){
   const pick=$("idPhotoPick"),file=$("idPhotoFile");
@@ -1893,6 +1946,7 @@ function setupIdPhoto(){
       localStorage.setItem("idPhoto_v1",rd.result);
       renderIdPhoto(rd.result);
       toast("证件照已保存 · 多份简历可自动复用");
+      if(window.__idPhotoChanged)window.__idPhotoChanged();
     };
     rd.readAsDataURL(f);
     e.target.value="";
@@ -1905,6 +1959,137 @@ function setupIdPhoto(){
   },{passive:true});
   pick.addEventListener("touchend",e=>{if(longPressTimer){clearTimeout(longPressTimer);longPressTimer=null;}});
   pick.addEventListener("touchmove",e=>{if(longPressTimer){clearTimeout(longPressTimer);longPressTimer=null;}});
+}
+
+/* ====================== 写简历页：引用「我的证件照」 ====================== */
+function setupIdPhotoRef(){
+  const wrap=$("idPhotoRefWrap"),btn=$("btnUseIdPhoto");
+  if(!wrap||!btn)return;
+  const refresh=()=>{
+    const d=localStorage.getItem("idPhoto_v1");
+    wrap.style.display=d?"":"none";
+    if(!d)return;
+    const used=photoData===d;
+    btn.className="idref-btn"+(used?" done":"");
+    btn.textContent=used?"✅ 已引用证件照":"📷 引用我的证件照";
+  };
+  btn.onclick=()=>{
+    const d=localStorage.getItem("idPhoto_v1");
+    if(!d){toast("请先到「我的」上传证件照");return;}
+    photoData=d;
+    renderAva();renderTplGrid();renderPreview();saveDraft();
+    refresh();
+    toast("✅ 已引用我的证件照");
+  };
+  /* 我的页增删证件照后同步刷新（renderIdPhoto / delIdPhoto 会调用） */
+  window.__idPhotoChanged=refresh;
+  refresh();
+}
+
+/* ====================== 手机号登录（我的页） ====================== */
+const AUTH_KEY="auth_v1";
+let authInfo=null;
+function loadAuth(){
+  try{const d=JSON.parse(localStorage.getItem(AUTH_KEY)||"null");if(d&&d.token)authInfo=d;}catch(e){}
+}
+function saveAuth(d){
+  authInfo=d;
+  try{d?localStorage.setItem(AUTH_KEY,JSON.stringify(d)):localStorage.removeItem(AUTH_KEY);}catch(e){}
+  renderAuth();
+}
+function renderAuth(){
+  const nl=$("authNotLogin"),li=$("authLoggedIn");
+  if(!nl||!li)return;
+  if(authInfo&&authInfo.token){
+    nl.style.display="none";li.style.display="";
+    const p=$("authPhone");if(p)p.textContent=authInfo.maskPhone||authInfo.phone;
+  }else{
+    nl.style.display="";li.style.display="none";
+  }
+}
+let codeTimer=null;
+function openLogin(){
+  if(authInfo&&authInfo.token){toast("已登录，无需重复登录");return;}
+  $("maskLogin").classList.add("show");
+  setTimeout(()=>{const p=$("loginPhone");if(p)p.focus();},120);
+}
+function closeLogin(){$("maskLogin").classList.remove("show");}
+async function sendLoginCode(){
+  const btn=$("btnSendCode"),phone=$("loginPhone").value.trim();
+  if(!/^1\d{10}$/.test(phone)){toast("请输入正确的 11 位手机号");return;}
+  btn.classList.add("disabled");btn.textContent="发送中…";
+  try{
+    const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),12000);
+    let resp;
+    try{
+      resp=await fetch(AI_WORKER_URL+"auth/send-code",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({phone}),signal:ctrl.signal
+      });
+    }finally{clearTimeout(t);}
+    const data=await resp.json();
+    if(!data.ok){
+      toast("⚠️ "+data.error);
+      btn.classList.remove("disabled");btn.textContent="发送验证码";
+      return;
+    }
+    const hint=$("loginHint");if(hint)hint.textContent="验证码已发送 · 5 分钟内有效";
+    if(data.devCode)toast("开发模式验证码："+data.devCode,3200);
+    let n=data.cooldown||60;
+    btn.textContent="重发("+n+"s)";
+    clearInterval(codeTimer);
+    codeTimer=setInterval(()=>{
+      n--;
+      if(n<=0){clearInterval(codeTimer);btn.classList.remove("disabled");btn.textContent="发送验证码";}
+      else btn.textContent="重发("+n+"s)";
+    },1000);
+  }catch(e){
+    toast(e.name==="AbortError"?"网络超时，请重试":"发送失败："+e.message);
+    btn.classList.remove("disabled");btn.textContent="发送验证码";
+  }
+}
+async function doLogin(){
+  const phone=$("loginPhone").value.trim(),code=$("loginCode").value.trim();
+  if(!/^1\d{10}$/.test(phone)){toast("请输入正确的手机号");return;}
+  if(!/^\d{6}$/.test(code)){toast("请输入 6 位验证码");return;}
+  const btn=$("btnLoginOk");btn.textContent="登录中…";
+  try{
+    const resp=await fetch(AI_WORKER_URL+"auth/login",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({phone,code})
+    });
+    const data=await resp.json();
+    if(!data.ok){toast("⚠️ "+data.error);btn.textContent="登录";return;}
+    saveAuth({token:data.token,phone:data.phone,maskPhone:data.maskPhone,expiresAt:data.expiresAt});
+    closeLogin();toast("✅ 登录成功 · 云端同步就绪");btn.textContent="登录";
+  }catch(e){toast("网络异常："+e.message);btn.textContent="登录";}
+}
+async function doLogout(){
+  if(!confirm("确认退出登录？本地简历与证件照仍保留"))return;
+  try{
+    if(authInfo&&authInfo.token){
+      await fetch(AI_WORKER_URL+"auth/logout",{method:"POST",headers:{"Authorization":"Bearer "+authInfo.token}});
+    }
+  }catch(e){}
+  saveAuth(null);toast("已退出登录");
+}
+/* 启动时校验 token 是否仍有效（失效自动登出，不打扰） */
+async function verifyAuth(){
+  if(!authInfo||!authInfo.token)return;
+  try{
+    const resp=await fetch(AI_WORKER_URL+"auth/me",{headers:{"Authorization":"Bearer "+authInfo.token}});
+    const data=await resp.json();
+    if(!data.ok)saveAuth(null);
+  }catch(e){}
+}
+function setupAuth(){
+  const open=$("btnOpenLogin"),send=$("btnSendCode"),ok=$("btnLoginOk"),out=$("btnLogout"),mask=$("maskLogin");
+  if(open)open.onclick=openLogin;
+  if(send)send.onclick=sendLoginCode;
+  if(ok)ok.onclick=doLogin;
+  if(out)out.onclick=doLogout;
+  if(mask)mask.onclick=e=>{if(e.target===mask)closeLogin();};
+  renderAuth();
 }
 
 /* ====================== 导出 ====================== */
@@ -2157,9 +2342,9 @@ $("btnAddSection").onclick=()=>{
   profile.customSections=(profile.customSections||[]).concat([{id:"cs"+Date.now(),name:"",content:""}]);
   renderCustomSections();saveDraft();toast("已添加模块 · 填入名称和内容");
 };
-$("btnReset").onclick=()=>{profile=JSON.parse(JSON.stringify(DEFAULT_PROFILE));photoData=null;syncFormFromProfile();renderAva();renderTplGrid();renderPreview();updateHero();localStorage.removeItem(DRAFT_KEY);toast("已恢复示例数据");};
+$("btnReset").onclick=()=>{profile=JSON.parse(JSON.stringify(DEFAULT_PROFILE));photoData=null;syncFormFromProfile();renderAva();renderTplGrid();renderPreview();updateHero();localStorage.removeItem(DRAFT_KEY);toast("已恢复示例数据");if(window.__idPhotoChanged)window.__idPhotoChanged();};
 $("avaPick").onclick=()=>$("photoFile").click();
-$("photoFile").onchange=e=>{const f=e.target.files[0];if(!f)return;if(f.size>5*1024*1024){toast("图片过大（>5MB）");e.target.value="";return;}const rd=new FileReader();rd.onload=()=>{photoData=rd.result;renderAva();renderTplGrid();renderPreview();saveDraft();toast("头像已上传 · 简历预览已同步");};rd.readAsDataURL(f);e.target.value="";};
+$("photoFile").onchange=e=>{const f=e.target.files[0];if(!f)return;if(f.size>5*1024*1024){toast("图片过大（>5MB）");e.target.value="";return;}const rd=new FileReader();rd.onload=()=>{photoData=rd.result;renderAva();renderTplGrid();renderPreview();saveDraft();toast("头像已上传 · 简历预览已同步");if(window.__idPhotoChanged)window.__idPhotoChanged();};rd.readAsDataURL(f);e.target.value="";};
 $("btnSave").onclick=doSaveResume;
 $("btnEdit").onclick=()=>goTab("pageWrite"); /* 写简历页的「📌 生成简历」下方另有入口；导出页 ✏️修改 由 enterEditMode 接管（覆盖于下方） */
 $("btnBackTpl").onclick=()=>goTab("pageTpl");
@@ -2289,6 +2474,9 @@ window.addEventListener("resize",()=>{fitThumbs();fitPreviewImg();});
 
 /* 证件照管理初始化 */
 setupIdPhoto();loadIdPhoto();
+/* 写简历页引用证件照 + 手机号登录 */
+setupIdPhotoRef();
+loadAuth();setupAuth();verifyAuth();
 </script>
 </body>
 </html>
