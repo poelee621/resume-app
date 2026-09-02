@@ -718,6 +718,18 @@ textarea:focus{border-color:var(--brand)}
 .csec-content{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12.5px;outline:none;font-family:inherit;resize:vertical;line-height:1.5;min-height:52px;max-height:120px;background:#fff}
 .csec-content:focus{border-color:var(--brand)}
 
+/* ====================== 证件照管理（我的页） ====================== */
+.id-photo-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:14px;display:flex;gap:12px;align-items:center}
+.id-photo-pick{width:68px;height:68px;border-radius:10px;background:linear-gradient(135deg,#e9ecf3,#d6dde9);display:flex;align-items:center;justify-content:center;font-size:30px;color:#aab2c0;cursor:pointer;overflow:hidden;flex:0 0 auto;border:2px dashed #cfd5e0;position:relative;-webkit-tap-highlight-color:transparent}
+.id-photo-pick:active{transform:scale(.97)}
+.id-photo-pick.has{border:2px solid var(--brand);border-style:solid}
+.id-photo-pick img{width:100%;height:100%;object-fit:cover;display:block}
+.id-photo-pick .plus{font-weight:300;line-height:1}
+.id-photo-info{flex:1;min-width:0}
+.id-photo-info .t1{font-size:14px;font-weight:800;color:var(--ink)}
+.id-photo-info .t2{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.5}
+.id-photo-info .t2 .del{cursor:pointer;color:#d64040;font-weight:700;margin-left:6px;-webkit-tap-highlight-color:transparent}
+
 /* ====================== 弹窗（命名 / 付费） ====================== */
 .mask{position:absolute;inset:0;background:rgba(15,18,26,.55);z-index:80;display:none;align-items:flex-end;justify-content:center}
 .mask.show{display:flex}
@@ -888,17 +900,31 @@ textarea:focus{border-color:var(--brand)}
       <div class="page-body" style="padding:11px 12px">
         <div class="sec-title" style="margin-bottom:7px">导出（三种呈现）</div>
         <div class="btn-row">
-          <button class="btn primary" id="btnImg">🖼 图片PNG</button>
+          <button class="btn primary" id="btnImg">🖼 图片</button>
           <button class="btn dark" id="btnPdf">📄 PDF</button>
           <button class="btn ghost" id="btnDoc">📝 Word</button>
         </div>
-        <div class="hint" style="margin-top:10px;font-size:11px;color:var(--muted)">🖼 PNG 免费下载 · 📄 PDF / 📝 Word 为付费功能（单次 ¥9.9 / 包月 ¥49 / 体验包年 ¥89）</div>
+        <div class="hint" style="margin-top:10px;font-size:11px;color:var(--muted)">🖼 图片免费下载 · 📄 PDF / 📝 Word 为付费功能（单次 ¥9.9 / 包月 ¥49 / 体验包年 ¥89）</div>
       </div>
     </section>
     <!-- 我的简历 -->
     <section class="page" id="pageMine">
       <div class="page-head"><div><div class="title">我的简历</div><div class="sub">多份简历按目标公司分开 · 随时打开修改下载</div></div></div>
-      <div class="page-body" id="libBody"></div>
+      <div class="page-body">
+        <!-- 证件照管理 -->
+        <section class="id-photo-card" id="idPhotoCard">
+          <div class="id-photo-pick" id="idPhotoPick">
+            <img id="idPhotoImg" alt="证件照" style="display:none">
+            <span id="idPhotoPlus" class="plus">+</span>
+          </div>
+          <div class="id-photo-info">
+            <div class="t1">我的证件照</div>
+            <div class="t2" id="idPhotoHint">点 + 上传 · 用于求职投递 · 多份简历可复用</div>
+          </div>
+          <input type="file" id="idPhotoFile" accept="image/*" style="display:none">
+        </section>
+        <div id="libBody"></div>
+      </div>
     </section>
   </div>
   <div class="tabbar">
@@ -1460,7 +1486,7 @@ function renderLib(){
         <div class="lib-info"><div class="lib-nm">${esc(it.name)}</div><div class="lib-meta">${esc(tplName(it.curTpl))} · ${ds}</div></div>
         <div class="lib-ops">
           <button class="lib-op primary" data-a="open">编辑</button>
-          <button class="lib-op" data-a="png">PNG</button>
+          <button class="lib-op" data-a="png">图片</button>
           <button class="lib-op danger" data-a="del">删</button>
         </div></div>`;
     }).join("");
@@ -1816,6 +1842,71 @@ function fitToOnePage(a4,pageH){
   }
   return h;
 }
+
+/* ====================== 证件照管理（我的页） ====================== */
+function loadIdPhoto(){
+  try{
+    const d=localStorage.getItem("idPhoto_v1");
+    if(d)renderIdPhoto(d);
+  }catch(e){}
+}
+function renderIdPhoto(data){
+  const pick=$("idPhotoPick"),img=$("idPhotoImg"),plus=$("idPhotoPlus"),hint=$("idPhotoHint");
+  if(!pick)return;
+  if(data){
+    pick.classList.add("has");
+    img.src=data;img.style.display="";
+    plus.style.display="none";
+    hint.innerHTML='已上传 · 点图可替换 / 删除 <span class="del" id="idPhotoDel">删除</span>';
+  }else{
+    pick.classList.remove("has");
+    img.src="";img.style.display="none";
+    plus.style.display="";
+    hint.innerHTML='点 + 上传 · 用于求职投递 · 多份简历可复用';
+  }
+}
+function delIdPhoto(){
+  if(!confirm("确认删除我的证件照？"))return;
+  localStorage.removeItem("idPhoto_v1");
+  renderIdPhoto(null);
+  toast("已删除证件照");
+}
+function setupIdPhoto(){
+  const pick=$("idPhotoPick"),file=$("idPhotoFile");
+  if(!pick||!file)return;
+  pick.onclick=()=>{
+    if(pick.classList.contains("has")){
+      if(confirm("点击 = 替换，是否继续？\n\n取消后长按可删除")){
+        file.click();
+      }else{
+        delIdPhoto();
+      }
+      return;
+    }
+    file.click();
+  };
+  file.onchange=e=>{
+    const f=e.target.files[0];if(!f)return;
+    if(f.size>5*1024*1024){toast("图片过大（>5MB），请用相册内的标准证件照");e.target.value="";return;}
+    const rd=new FileReader();
+    rd.onload=()=>{
+      localStorage.setItem("idPhoto_v1",rd.result);
+      renderIdPhoto(rd.result);
+      toast("证件照已保存 · 多份简历可自动复用");
+    };
+    rd.readAsDataURL(f);
+    e.target.value="";
+  };
+  /* 长按 = 删除（已上传状态） */
+  let longPressTimer=null;
+  pick.addEventListener("touchstart",e=>{
+    if(!pick.classList.contains("has"))return;
+    longPressTimer=setTimeout(()=>{delIdPhoto();},700);
+  },{passive:true});
+  pick.addEventListener("touchend",e=>{if(longPressTimer){clearTimeout(longPressTimer);longPressTimer=null;}});
+  pick.addEventListener("touchmove",e=>{if(longPressTimer){clearTimeout(longPressTimer);longPressTimer=null;}});
+}
+
 /* ====================== 导出 ====================== */
 async function exportImage(){
   const m=docModel();
@@ -1863,21 +1954,65 @@ function showFullPreview(urls,type){
     ? `<iframe src="${list[0]}" style="width:100%;flex:1;border:none;background:#fff"></iframe>`
     : list.map(u=>`<img src="${u}" style="max-width:100%;height:auto;margin:12px 0;box-shadow:0 4px 24px rgba(0,0,0,.5)">`).join("");
   box.innerHTML=`<div style="position:sticky;top:0;width:100%;background:rgba(16,18,22,.92);color:#fff;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;font-size:13px;z-index:10;box-sizing:border-box">
-    <span>${type==="html"?"滑动查看简历排版 · 保存请用 Word/PNG":"👆 点图片退出 · 点右上角「保存」存入相册 · 共 "+list.length+" 页"}</span>
+    <span>${type==="html"?"滑动查看简历排版 · 保存请用 Word/图片":"👆 点图片退出 · 长按图片<span style=\"color:#ff5d5d;font-weight:800\">存相册</span> · 共 "+list.length+" 页"}</span>
     <span style="display:flex;gap:8px">
-      <span id="fpSave" style="cursor:pointer;padding:6px 14px;background:#2ea86b;border-radius:8px;font-weight:700">💾 保存相册</span>
+      <span id="fpSave" style="cursor:pointer;padding:6px 14px;background:#2ea86b;border-radius:8px;font-weight:700">保存</span>
       <span id="fpClose" style="cursor:pointer;padding:6px 14px;background:#6C5CE7;border-radius:8px;font-weight:700">完成</span>
     </span></div>${bodyHtml}`;
   document.body.appendChild(box);
   box.querySelector("#fpClose").onclick=()=>box.remove();
-  /* PNG：点图片退出（符合直觉）；长按 = 系统原生保存菜单 */
+  /* PNG：双指缩放 + 单指拖动（已缩放时）+ 单击退出（缩放=1 时）+ 长按触发 iOS 系统菜单 */
   box.querySelectorAll("img").forEach(img=>{
     img.style.cursor="zoom-out";
-    img.onclick=()=>box.remove();
-    /* 长按提示：长按 500ms 后提示"松手可保存图片"（原生菜单由系统提供） */
-    let timer=null;
-    img.addEventListener("touchstart",()=>{timer=setTimeout(()=>toast("松手 → 选「保存图片」"),500);},{passive:true});
-    img.addEventListener("touchend",()=>{if(timer)clearTimeout(timer);},{passive:true});
+    img.style.touchAction="none";
+    img.style.userSelect="none";
+    img.style.webkitUserSelect="none";
+    img.style.transformOrigin="center center";
+    img.style.transition="transform .18s ease-out";
+    img.style.willChange="transform";
+    img.onclick=null; /* 改由 touchend 智能判断 */
+    let scale=1,tx=0,ty=0,lastScale=1,lastTx=0,lastTy=0,lastPinchDist=0;
+    let dragStart=null,moved=0,downAt=0;
+    const apply=()=>{img.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`;};
+    img.ontouchstart=e=>{
+      const t=e.touches;downAt=Date.now();moved=0;
+      if(t.length===2){
+        lastPinchDist=Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+        lastScale=scale;dragStart=null;
+      }else if(t.length===1 && scale>1){
+        dragStart={x:t[0].clientX-lastTx,y:t[0].clientY-lastTy};
+      }
+    };
+    img.ontouchmove=e=>{
+      const t=e.touches;moved++;
+      if(t.length===2){
+        const d=Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+        scale=Math.max(1,Math.min(4,lastScale*(d/Math.max(1,lastPinchDist))));
+        apply();e.preventDefault();
+      }else if(t.length===1 && dragStart && scale>1){
+        tx=t[0].clientX-dragStart.x;
+        ty=t[0].clientY-dragStart.y;
+        apply();e.preventDefault();
+      }
+    };
+    img.ontouchend=e=>{
+      lastScale=scale;lastTx=tx;lastTy=ty;dragStart=null;
+      /* 单击退出（仅在未缩放、未拖动、<300ms） */
+      if(scale<=1.05 && moved<4 && Date.now()-downAt<350)box.remove();
+      /* 缩放回 1 时归零位移（下次缩放不跳位置） */
+      if(scale<=1.05){tx=0;ty=0;scale=1;apply();}
+    };
+    /* 长按 520ms → toast 提示「松手 → 存储图像」（iOS 系统会自动弹原生菜单） */
+    let lpT=null;
+    img.addEventListener("touchstart",()=>{
+      if(lpT)clearTimeout(lpT);
+      lpT=setTimeout(()=>{
+        if(moved<3 && scale<=1.05)toast("松手 → 选「存储图像」存相册");
+      },520);
+    },{passive:true});
+    const clearLp=()=>{if(lpT)clearTimeout(lpT);lpT=null;};
+    img.addEventListener("touchend",clearLp);
+    img.addEventListener("touchmove",clearLp);
   });
   /* 保存按钮：原生 App 用 Media 插件存相册；网页降级 blob 下载（Capacitor WebView 不接管 a[download]，长按/下载都不可靠） */
   const saveBtn=box.querySelector("#fpSave");
@@ -1914,6 +2049,43 @@ function triggerDownload(blob,filename){
   document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),10000);
   toast("✅ "+filename+" 已发送到下载队列 · 完成后可在「文件管理 / Download/简历大师/」打开");
+}
+
+/* ====================== 导出 ====================== */
+async function exportImage(){
+  const m=docModel();
+  toast("正在生成简历图片…");
+  /* 外层固定 794×1123 + overflow hidden；内层 A4 完整 finalH 高；
+     每页用 marginTop 偏移 A4 让对应段落入视口（box 模型偏移比 transform 稳定，不触发 html2canvas 渲染坑） */
+  const outer=document.createElement("div");
+  outer.style.cssText="position:fixed;left:-99999px;top:0;width:794px;height:1123px;overflow:hidden;";
+  outer.innerHTML=htmlOf(m,curTpl);
+  document.body.appendChild(outer);
+  const a4=outer.querySelector(".a4");
+  a4.style.transform="none";a4.style.fontSize="";a4.style.minHeight="auto";a4.style.paddingBottom="0";
+  void a4.offsetHeight;
+  const actualH=a4.scrollHeight;
+  /* 测量 + 自适应：少内容字号放大填满；内容"一页多一点点"（<1700）→ 强制压缩到一页（缩字号+行距） */
+  let ratio=Math.min(1.0,Math.max(0.85,1033/actualH));
+  a4.style.fontSize=(13*ratio).toFixed(2)+"px";
+  void a4.offsetHeight;
+  let h2=fitToOnePage(a4,1123);
+  a4.style.paddingBottom=Math.max(0,1123-h2)+"px";
+  const finalH=Math.max(1123,h2+Math.max(0,1123-h2));
+  a4.style.minHeight=finalH+"px";
+  /* 逐页截取：marginTop 偏移 A4 */
+  const pageH=1123;
+  const pages=Math.max(1,Math.ceil(finalH/pageH));
+  const urls=[];
+  for(let i=0;i<pages;i++){
+    a4.style.marginTop=(-i*pageH)+"px";
+    void a4.offsetHeight;
+    const c=await html2canvas(outer,{scale:2,width:794,height:pageH,windowWidth:794,useCORS:true,backgroundColor:curTpl==="dark"?"#16181d":"#ffffff"});
+    urls.push(c.toDataURL("image/png"));
+  }
+  document.body.removeChild(outer);
+  showFullPreview(urls,"png");
+  toast("共 "+pages+" 页 · 点图片退出 · 长按图片存相册");
 }
 function exportPDF(){
   const m=docModel();
@@ -2082,6 +2254,9 @@ updateHero();
 updateSaveBtn();
 renderLib();
 window.addEventListener("resize",()=>{fitThumbs();fitPreviewImg();});
+
+/* 证件照管理初始化 */
+setupIdPhoto();loadIdPhoto();
 </script>
 </body>
 </html>
