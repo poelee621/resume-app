@@ -948,6 +948,18 @@ textarea:focus{border-color:var(--brand)}
             <span class="idref-btn" id="btnLogout" style="flex:0 0 auto">退出</span>
           </div>
         </section>
+        <!-- 云端备份（登录后显示） -->
+        <section class="auth-card" id="syncCard" style="display:none">
+          <div class="auth-ic" style="background:linear-gradient(135deg,#e8f0fe,#d3e3fd);color:#2b6de3">☁️</div>
+          <div class="auth-info">
+            <div class="t1">云端备份</div>
+            <div class="t2" id="syncHint">简历 · 证件照 · 会员 备份到云端</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-direction:column;flex:0 0 auto">
+            <span class="idref-btn" id="btnSyncUp">☁️ 备份</span>
+            <span class="idref-btn" id="btnSyncDown">⬇️ 恢复</span>
+          </div>
+        </section>
         <!-- 证件照管理 -->
         <section class="id-photo-card" id="idPhotoCard">
           <div class="id-photo-pick" id="idPhotoPick">
@@ -2006,6 +2018,7 @@ function renderAuth(){
   }else{
     nl.style.display="";li.style.display="none";
   }
+  renderSyncCard();
 }
 let codeTimer=null;
 function openLogin(){
@@ -2090,6 +2103,95 @@ function setupAuth(){
   if(out)out.onclick=doLogout;
   if(mask)mask.onclick=e=>{if(e.target===mask)closeLogin();};
   renderAuth();
+}
+
+/* ====================== 云端同步（登录后可用：简历/证件照/会员） ====================== */
+let lastSyncAt=0;
+function renderSyncCard(){
+  const card=$("syncCard");if(!card)return;
+  card.style.display=(authInfo&&authInfo.token)?"":"none";
+  if(!(authInfo&&authInfo.token))return;
+  const h=$("syncHint");
+  if(h){
+    if(lastSyncAt)h.textContent="上次备份："+new Date(lastSyncAt).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
+    else h.textContent="简历 · 证件照 · 会员 备份到云端";
+  }
+}
+async function syncUp(){
+  if(!authInfo||!authInfo.token){toast("请先登录");return;}
+  const btn=$("btnSyncUp");btn.textContent="备份中…";
+  try{
+    const payload={
+      resumes:resumeLib,
+      idPhoto:(()=>{try{return localStorage.getItem("idPhoto_v1");}catch(e){return null;}})(),
+      memberUntil:payInfo.expire||0,
+      version:Date.now(),
+    };
+    const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),15000);
+    let resp;
+    try{
+      resp=await fetch(AI_WORKER_URL+"sync/upload",{
+        method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+authInfo.token},
+        body:JSON.stringify(payload),signal:ctrl.signal
+      });
+    }finally{clearTimeout(t);}
+    const data=await resp.json();
+    if(!data.ok)throw new Error(data.error||"备份失败");
+    lastSyncAt=data.updatedAt||Date.now();
+    renderSyncCard();
+    toast("✅ 已备份 "+resumeLib.length+" 份简历到云端");
+  }catch(e){
+    toast(e.name==="AbortError"?"网络超时，请重试":"备份失败："+e.message,3000);
+  }
+  btn.textContent="☁️ 备份";
+}
+async function syncDown(){
+  if(!authInfo||!authInfo.token){toast("请先登录");return;}
+  const btn=$("btnSyncDown");btn.textContent="恢复中…";
+  try{
+    const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),15000);
+    let resp;
+    try{
+      resp=await fetch(AI_WORKER_URL+"sync/download",{headers:{"Authorization":"Bearer "+authInfo.token},signal:ctrl.signal});
+    }finally{clearTimeout(t);}
+    const data=await resp.json();
+    if(!data.ok)throw new Error(data.error||"获取失败");
+    const d=data.data;
+    if(!d||!Array.isArray(d.resumes)||!d.resumes.length){
+      toast("云端暂无备份数据 · 先点「备份」");
+      btn.textContent="⬇️ 恢复";return;
+    }
+    const localN=resumeLib.length;
+    if(!confirm("云端有 "+d.resumes.length+" 份简历（本地 "+localN+" 份）\n恢复会覆盖本地简历 / 证件照 / 会员，继续？")){
+      btn.textContent="⬇️ 恢复";return;
+    }
+    resumeLib=d.resumes;saveLib();
+    if(d.idPhoto){
+      try{
+        localStorage.setItem("idPhoto_v1",d.idPhoto);
+        renderIdPhoto(d.idPhoto);
+        if(window.__idPhotoChanged)window.__idPhotoChanged();
+      }catch(e){}
+    }
+    if(d.memberUntil&&d.memberUntil>Date.now()){
+      payInfo={type:(payInfo&&payInfo.type)||"month",expire:d.memberUntil};
+      try{localStorage.setItem(PAY_KEY,JSON.stringify(payInfo));}catch(e){}
+      updatePayBtn();
+      toast("👑 会员已同步恢复");
+    }
+    lastSyncAt=d.updatedAt||Date.now();
+    renderSyncCard();renderLib();
+    toast("✅ 已从云端恢复 "+resumeLib.length+" 份简历");
+  }catch(e){
+    toast("恢复失败："+e.message,3000);
+  }
+  btn.textContent="⬇️ 恢复";
+}
+function setupSync(){
+  const up=$("btnSyncUp"),down=$("btnSyncDown");
+  if(up)up.onclick=syncUp;
+  if(down)down.onclick=syncDown;
+  renderSyncCard();
 }
 
 /* ====================== 导出 ====================== */
@@ -2477,6 +2579,8 @@ setupIdPhoto();loadIdPhoto();
 /* 写简历页引用证件照 + 手机号登录 */
 setupIdPhotoRef();
 loadAuth();setupAuth();verifyAuth();
+/* 云端备份（登录后可用） */
+setupSync();
 </script>
 </body>
 </html>

@@ -22,6 +22,8 @@
  *   POST /auth/login  → 手机号+验证码换 token
  *   GET  /auth/me     → token 换手机号（启动恢复登录态）
  *   POST /auth/logout → 注销 token
+ *   POST /sync/upload   → 简历/证件照/会员 备份到云端（需登录）
+ *   GET  /sync/download → 从云端拉取备份（需登录）
  *   GET  /health      → 健康检查
  *
  * 启动：node index.mjs
@@ -36,7 +38,7 @@ const CORS = {
   "Content-Type": "application/json;charset=utf-8",
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST,GET,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
 function json(obj, status = 200) {
@@ -268,6 +270,35 @@ function logout(token) {
   return { ok: true };
 }
 
+/* ---------------- 云同步：简历/证件照/会员（MVP 存实例内存，按手机号） ---------------- */
+/* ⚠️ 与验证码同一限制：FC 冷启动/多实例会丢。正式上线换阿里云 OTS/Redis（见部署指南备注） */
+const syncStore = new Map(); // phone -> { resumes, idPhoto, memberUntil, version, updatedAt }
+
+function authedPhone(evt) {
+  const auth = getHeader(evt.headers, "authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  const m = me(token);
+  return m.ok ? m.phone : null;
+}
+
+function syncUpload(phone, b) {
+  if (!Array.isArray(b.resumes)) return { ok: false, error: "resumes 必须是数组" };
+  const record = {
+    resumes: b.resumes,
+    idPhoto: typeof b.idPhoto === "string" ? b.idPhoto : null,
+    memberUntil: Number(b.memberUntil) || 0,
+    version: Number(b.version) || Date.now(),
+    updatedAt: Date.now(),
+  };
+  syncStore.set(phone, record);
+  return { ok: true, updatedAt: record.updatedAt, count: record.resumes.length };
+}
+
+function syncDownload(phone) {
+  const record = syncStore.get(phone);
+  return { ok: true, data: record || null };
+}
+
 /* ---------------- 核心：路由分发（FC event → json response） ---------------- */
 async function handleEvent(evt) {
   const method = (evt.httpMethod || evt.method || "GET").toUpperCase();
@@ -323,6 +354,18 @@ async function handleEvent(evt) {
       const auth = getHeader(evt.headers, "authorization") || "";
       const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
       return json(logout(token));
+    }
+    /* ------- 云同步（需登录） ------- */
+    if (urlPath === "/sync/upload" && method === "POST") {
+      const phone = authedPhone(evt);
+      if (!phone) return json({ ok: false, error: "请先登录", code: "NO_AUTH" }, 401);
+      const b = body ? JSON.parse(body) : {};
+      return json(syncUpload(phone, b));
+    }
+    if (urlPath === "/sync/download" && (method === "GET" || method === "POST")) {
+      const phone = authedPhone(evt);
+      if (!phone) return json({ ok: false, error: "请先登录", code: "NO_AUTH" }, 401);
+      return json(syncDownload(phone));
     }
     return json({ ok: false, error: "not found: " + urlPath }, 404);
   } catch (e) {
