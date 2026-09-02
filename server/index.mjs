@@ -188,19 +188,27 @@ async function payAppCreate(plan, origin) {
   };
 }
 
-/* ---------------- 登录：内存验证码 + 会话（MVP 无 DB，单实例内存） ---------------- */
-/* ⚠️ 生产注意：
-   1. FC 冷启动/多实例时内存会丢 → 验证码重发、token 失效重登即可（无感知）
-   2. 真短信：配置 SMS_WEBHOOK 环境变量（http(s) 地址），服务端会 POST {phone, code} 到该地址；
-      未配置时进入 dev 模式，验证码直接在响应里返回（devCode），方便真机联调
-   3. 正式接入阿里云短信：申请签名+模板后，在 sendSms 里实现（需 AccessKey + 计算签名） */
-const codeStore = new Map();   // phone -> { code, exp, lastSent }
-const sessStore = new Map();   // token  -> { phone, exp }
+/* ---------------- 登录：自签名验证码 challenge + 无状态 token（不依赖实例内存） ---------------- */
+/* 为什么不用内存存验证码/会话：
+   FC 多实例下 send-code 与 login 可能落到不同实例 → 内存方案登录概率性失败。
+   改为 HMAC 自签名：challenge 内嵌 code+exp（验签防伪），token 内嵌 phone+exp（验签恢复），
+   任何实例都能独立校验，天然跨实例。 */
+const AUTH_SECRET = ENV.AUTH_SECRET || "resume_dev_secret_2026_change_me";
 const CODE_TTL = 5 * 60 * 1000;
 const SEND_COOLDOWN = 60 * 1000;
 const SESS_TTL = 90 * 24 * 3600 * 1000; // 90 天
 
 const PHONE_RE = /^1\d{10}$/;
+
+async function hmac(content) {
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(AUTH_SECRET),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(content));
+  return Buffer.from(new Uint8Array(sig)).toString("base64url");
+}
+const b64url = (s) => Buffer.from(s).toString("base64url");
 
 function maskPhone(phone) {
   return phone ? phone.slice(0, 3) + "****" + phone.slice(7) : "";
@@ -219,10 +227,12 @@ async function deliverSms(phone, code) {
     if (!resp.ok) throw new Error("webhook status " + resp.status);
     return { devMode: false };
   } catch (e) {
-    /* webhook 失败也退回 dev 模式，避免把测试者卡死 */
     return { devMode: true, code, error: e.message };
   }
 }
+
+/* cooldown 尽力而为（内存，多实例下可能放宽，可接受） */
+const codeStore = new Map(); // phone -> { lastSent }
 
 async function sendCode(phone) {
   if (!phone || !PHONE_RE.test(phone)) return { ok: false, error: "手机号格式不正确" };
@@ -232,53 +242,64 @@ async function sendCode(phone) {
     const wait = Math.ceil((SEND_COOLDOWN - (now - prev.lastSent)) / 1000);
     return { ok: false, error: `发送太频繁，请 ${wait} 秒后再试`, retryAfter: wait };
   }
+  codeStore.set(phone, { lastSent: now });
   const code = String(Math.floor(100000 + Math.random() * 900000));
-  codeStore.set(phone, { code, exp: now + CODE_TTL, lastSent: now });
+  const exp = now + CODE_TTL;
+  const challenge = await hmac(`code:${phone}:${code}:${exp}`);
   const sms = await deliverSms(phone, code);
-  const ret = { ok: true, ttl: CODE_TTL / 1000, cooldown: SEND_COOLDOWN / 1000 };
-  if (sms.devMode) ret.devCode = code; // 仅 dev 模式回传，方便测试
+  const ret = { ok: true, ttl: CODE_TTL / 1000, cooldown: SEND_COOLDOWN / 1000, exp, challenge };
+  if (sms.devMode) ret.devCode = code; /* 仅 dev 模式回传 */
   return ret;
 }
 
-function login(phone, code) {
+async function login(phone, code, challenge, exp) {
   if (!phone || !PHONE_RE.test(phone)) return { ok: false, error: "手机号格式不正确" };
-  const rec = codeStore.get(phone);
-  if (!rec || !code || rec.code !== String(code).trim()) return { ok: false, error: "验证码错误" };
-  if (Date.now() > rec.exp) {
-    codeStore.delete(phone);
-    return { ok: false, error: "验证码已过期，请重新获取" };
-  }
-  codeStore.delete(phone); // 用后即焚
-  const token = "t_" + crypto.randomUUID().replace(/-/g, "") + Math.random().toString(36).slice(2, 10);
-  sessStore.set(token, { phone, exp: Date.now() + SESS_TTL });
-  return { ok: true, token, phone, maskPhone: maskPhone(phone), expiresAt: Date.now() + SESS_TTL };
+  if (!code || !challenge || !exp) return { ok: false, error: "验证码错误" };
+  exp = Number(exp);
+  if (!(exp > Date.now())) return { ok: false, error: "验证码已过期，请重新获取" };
+  const expect = await hmac(`code:${phone}:${String(code).trim()}:${exp}`);
+  if (expect !== String(challenge)) return { ok: false, error: "验证码错误" };
+  /* 签发无状态 token：payload.signature */
+  const expiresAt = Date.now() + SESS_TTL;
+  const payload = b64url(JSON.stringify({ phone, exp: expiresAt }));
+  const sig = await hmac(`tok:${payload}`);
+  const token = `${payload}.${sig}`;
+  return { ok: true, token, phone, maskPhone: maskPhone(phone), expiresAt };
 }
 
-function me(token) {
-  if (!token) return { ok: false, error: "未登录", code: "NO_AUTH" };
-  const rec = sessStore.get(token);
-  if (!rec) return { ok: false, error: "登录已失效", code: "NO_AUTH" };
-  if (Date.now() > rec.exp) {
-    sessStore.delete(token);
-    return { ok: false, error: "登录已过期", code: "NO_AUTH" };
-  }
-  return { ok: true, phone: rec.phone, maskPhone: maskPhone(rec.phone), expiresAt: rec.exp };
+async function parseToken(token) {
+  const parts = String(token || "").split(".");
+  if (parts.length !== 2) return null;
+  const [payload, sig] = parts;
+  const expect = await hmac(`tok:${payload}`);
+  if (expect !== sig) return null;
+  try {
+    const obj = JSON.parse(Buffer.from(payload, "base64url").toString());
+    if (!obj.phone || !obj.exp || obj.exp < Date.now()) return null;
+    return { phone: obj.phone, exp: obj.exp };
+  } catch (e) { return null; }
+}
+
+async function me(token) {
+  const p = await parseToken(token);
+  if (!p) return { ok: false, error: "未登录或已过期", code: "NO_AUTH" };
+  return { ok: true, phone: p.phone, maskPhone: maskPhone(p.phone), expiresAt: p.exp };
 }
 
 function logout(token) {
-  if (token) sessStore.delete(token);
-  return { ok: true };
+  return { ok: true }; /* 无状态 token，注销即前端丢弃 */
 }
 
 /* ---------------- 云同步：简历/证件照/会员（MVP 存实例内存，按手机号） ---------------- */
-/* ⚠️ 与验证码同一限制：FC 冷启动/多实例会丢。正式上线换阿里云 OTS/Redis（见部署指南备注） */
+/* ⚠️ 与验证码不同：sync 数据仍需内存，多实例下 upload 后 download 可能短暂读不到，
+   前端自动拉取已带 3 次重试兜底；正式上线换阿里云 OTS/Redis（见部署指南备注） */
 const syncStore = new Map(); // phone -> { resumes, idPhoto, memberUntil, version, updatedAt }
 
-function authedPhone(evt) {
+async function authedPhone(evt) {
   const auth = getHeader(evt.headers, "authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  const m = me(token);
-  return m.ok ? m.phone : null;
+  const p = await parseToken(token);
+  return p ? p.phone : null;
 }
 
 function syncUpload(phone, b) {
@@ -343,12 +364,12 @@ async function handleEvent(evt) {
     }
     if (urlPath === "/auth/login" && method === "POST") {
       const b = body ? JSON.parse(body) : {};
-      return json(login(b.phone, b.code));
+      return json(await login(b.phone, b.code, b.challenge, b.exp));
     }
     if (urlPath === "/auth/me" && (method === "GET" || method === "POST")) {
       const auth = getHeader(evt.headers, "authorization") || "";
       const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-      return json(me(token));
+      return json(await me(token));
     }
     if (urlPath === "/auth/logout" && method === "POST") {
       const auth = getHeader(evt.headers, "authorization") || "";
@@ -357,13 +378,13 @@ async function handleEvent(evt) {
     }
     /* ------- 云同步（需登录） ------- */
     if (urlPath === "/sync/upload" && method === "POST") {
-      const phone = authedPhone(evt);
+      const phone = await authedPhone(evt);
       if (!phone) return json({ ok: false, error: "请先登录", code: "NO_AUTH" }, 401);
       const b = body ? JSON.parse(body) : {};
       return json(syncUpload(phone, b));
     }
     if (urlPath === "/sync/download" && (method === "GET" || method === "POST")) {
-      const phone = authedPhone(evt);
+      const phone = await authedPhone(evt);
       if (!phone) return json({ ok: false, error: "请先登录", code: "NO_AUTH" }, 401);
       return json(syncDownload(phone));
     }

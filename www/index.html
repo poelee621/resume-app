@@ -1581,14 +1581,14 @@ function delResume(id){
   if(!confirm("确定删除《"+it.name+"》？删除后无法恢复"))return;
   resumeLib=resumeLib.filter(x=>x.id!==id);
   if(curId===id)curId=null;
-  saveLib();renderLib();toast("已删除《"+it.name+"》");
+  saveLib();renderLib();toast("已删除《"+it.name+"》");markDirty();
 }
 /* 生成 / 更新简历 */
 function doSaveResume(){
   syncProfileFromForm();
   if(curId){
     const it=resumeLib.find(x=>x.id===curId);
-    if(it){it.profile=JSON.parse(JSON.stringify(profile));it.curTpl=curTpl;it.photoData=photoData;it.updatedAt=Date.now();saveLib();updateSaveBtn();toast("已更新《"+it.name+"》");renderLib();return;}
+    if(it){it.profile=JSON.parse(JSON.stringify(profile));it.curTpl=curTpl;it.photoData=photoData;it.updatedAt=Date.now();saveLib();updateSaveBtn();toast("已更新《"+it.name+"》");renderLib();markDirty();return;}
   }
   $("inpName").value="";$("maskName").classList.add("show");setTimeout(()=>$("inpName").focus(),150);
 }
@@ -1596,7 +1596,7 @@ function nameOk(){
   const name=$("inpName").value.trim()||("我的简历 "+(resumeLib.length+1));
   const it={id:"r"+Date.now(),name,profile:JSON.parse(JSON.stringify(profile)),curTpl,photoData,updatedAt:Date.now()};
   resumeLib.unshift(it);curId=it.id;saveLib();$("maskName").classList.remove("show");updateSaveBtn();
-  toast("已生成《"+name+"》· 可在「我的」查看");renderLib();
+  toast("已生成《"+name+"》· 可在「我的」查看");renderLib();markDirty();
 }
 
 /* ====================== 付费墙（Word/PDF 收费 · PNG 免费） ====================== */
@@ -1615,6 +1615,7 @@ function payFor(type){
   const days=type==="once"?1:(type==="month"?30:365);
   payInfo={type,expire:Date.now()+days*864e5};
   try{localStorage.setItem(PAY_KEY,JSON.stringify(payInfo));}catch(e){}
+  markDirty(); /* 会员变更 → 自动备份 */
 }
 function gateExport(fn){if(isPaid()){fn();return;}payNext=fn;updatePayBtn();$("maskPay").classList.add("show");}
 function hidePayMask(){$("maskPay").classList.remove("show");payNext=null;}
@@ -1935,6 +1936,7 @@ function delIdPhoto(){
   renderIdPhoto(null);
   toast("已删除证件照");
   if(window.__idPhotoChanged)window.__idPhotoChanged();
+  markDirty();
 }
 function setupIdPhoto(){
   const pick=$("idPhotoPick"),file=$("idPhotoFile");
@@ -1959,6 +1961,7 @@ function setupIdPhoto(){
       renderIdPhoto(rd.result);
       toast("证件照已保存 · 多份简历可自动复用");
       if(window.__idPhotoChanged)window.__idPhotoChanged();
+      markDirty();
     };
     rd.readAsDataURL(f);
     e.target.value="";
@@ -2021,6 +2024,7 @@ function renderAuth(){
   renderSyncCard();
 }
 let codeTimer=null;
+let loginChallenge=null,loginChallengeExp=0; /* 自签名验证码：login 时提交，防实例漂移 */
 function openLogin(){
   if(authInfo&&authInfo.token){toast("已登录，无需重复登录");return;}
   $("maskLogin").classList.add("show");
@@ -2048,6 +2052,8 @@ async function sendLoginCode(){
     }
     const hint=$("loginHint");if(hint)hint.textContent="验证码已发送 · 5 分钟内有效";
     if(data.devCode)toast("开发模式验证码："+data.devCode,3200);
+    loginChallenge=data.challenge||null;
+    loginChallengeExp=data.exp||0;
     let n=data.cooldown||60;
     btn.textContent="重发("+n+"s)";
     clearInterval(codeTimer);
@@ -2069,12 +2075,14 @@ async function doLogin(){
   try{
     const resp=await fetch(AI_WORKER_URL+"auth/login",{
       method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({phone,code})
+      body:JSON.stringify({phone,code,challenge:loginChallenge,exp:loginChallengeExp})
     });
     const data=await resp.json();
     if(!data.ok){toast("⚠️ "+data.error);btn.textContent="登录";return;}
     saveAuth({token:data.token,phone:data.phone,maskPhone:data.maskPhone,expiresAt:data.expiresAt});
+    loginChallenge=null;loginChallengeExp=0;
     closeLogin();toast("✅ 登录成功 · 云端同步就绪");btn.textContent="登录";
+    setTimeout(autoPull,800); /* 登录后自动拉取云端数据合并 */
   }catch(e){toast("网络异常："+e.message);btn.textContent="登录";}
 }
 async function doLogout(){
@@ -2093,6 +2101,7 @@ async function verifyAuth(){
     const resp=await fetch(AI_WORKER_URL+"auth/me",{headers:{"Authorization":"Bearer "+authInfo.token}});
     const data=await resp.json();
     if(!data.ok)saveAuth(null);
+    else setTimeout(autoPull,1500); /* token 有效 → 静默拉取云端合并 */
   }catch(e){}
 }
 function setupAuth(){
@@ -2117,9 +2126,11 @@ function renderSyncCard(){
     else h.textContent="简历 · 证件照 · 会员 备份到云端";
   }
 }
-async function syncUp(){
+async function syncUp(opts){
   if(!authInfo||!authInfo.token){toast("请先登录");return;}
-  const btn=$("btnSyncUp");btn.textContent="备份中…";
+  const silent=opts&&opts.silent;
+  const btn=silent?null:$("btnSyncUp");
+  if(btn)btn.textContent="备份中…";
   try{
     const payload={
       resumes:resumeLib,
@@ -2139,15 +2150,17 @@ async function syncUp(){
     if(!data.ok)throw new Error(data.error||"备份失败");
     lastSyncAt=data.updatedAt||Date.now();
     renderSyncCard();
-    toast("✅ 已备份 "+resumeLib.length+" 份简历到云端");
+    if(!silent)toast("✅ 已备份 "+resumeLib.length+" 份简历到云端");
   }catch(e){
-    toast(e.name==="AbortError"?"网络超时，请重试":"备份失败："+e.message,3000);
+    if(silent)console.warn("[autosync]",e.message);
+    else toast(e.name==="AbortError"?"网络超时，请重试":"备份失败："+e.message,3000);
   }
-  btn.textContent="☁️ 备份";
+  if(btn)btn.textContent="☁️ 备份";
 }
 async function syncDown(){
   if(!authInfo||!authInfo.token){toast("请先登录");return;}
   const btn=$("btnSyncDown");btn.textContent="恢复中…";
+  autoRestoring=true;
   try{
     const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),15000);
     let resp;
@@ -2159,10 +2172,12 @@ async function syncDown(){
     const d=data.data;
     if(!d||!Array.isArray(d.resumes)||!d.resumes.length){
       toast("云端暂无备份数据 · 先点「备份」");
+      autoRestoring=false;
       btn.textContent="⬇️ 恢复";return;
     }
     const localN=resumeLib.length;
     if(!confirm("云端有 "+d.resumes.length+" 份简历（本地 "+localN+" 份）\n恢复会覆盖本地简历 / 证件照 / 会员，继续？")){
+      autoRestoring=false;
       btn.textContent="⬇️ 恢复";return;
     }
     resumeLib=d.resumes;saveLib();
@@ -2182,16 +2197,98 @@ async function syncDown(){
     lastSyncAt=d.updatedAt||Date.now();
     renderSyncCard();renderLib();
     toast("✅ 已从云端恢复 "+resumeLib.length+" 份简历");
+    localDirtyAt=Date.now(); /* 恢复后本地即为最新 */
   }catch(e){
     toast("恢复失败："+e.message,3000);
   }
+  autoRestoring=false;
   btn.textContent="⬇️ 恢复";
 }
 function setupSync(){
   const up=$("btnSyncUp"),down=$("btnSyncDown");
-  if(up)up.onclick=syncUp;
+  if(up)up.onclick=()=>syncUp({});
   if(down)down.onclick=syncDown;
   renderSyncCard();
+}
+
+/* ====================== 自动同步：改完自动备份 · 登录/启动自动拉取 ====================== */
+let localDirtyAt=0;      // 本地最近一次数据变更时间
+let autoRestoring=false; // 拉取合并中，抑制自动备份，避免上传半成品
+let autoBackupTimer=null;
+
+function markDirty(){
+  localDirtyAt=Date.now();
+  scheduleAutoBackup();
+}
+function scheduleAutoBackup(){
+  if(autoBackupTimer)clearTimeout(autoBackupTimer);
+  if(!(authInfo&&authInfo.token))return;
+  autoBackupTimer=setTimeout(()=>{
+    if(autoRestoring){scheduleAutoBackup();return;} /* 正在合并云端数据 → 延后重试，不丢备份 */
+    syncUp({silent:true});
+  },2500);
+}
+/* 云端数据合并到本地（每条简历按 updatedAt 取新；证件照/会员按版本新旧） */
+function mergeCloud(d){
+  let changed=false;
+  if(Array.isArray(d.resumes)&&d.resumes.length){
+    const byId={};resumeLib.forEach(r=>{if(r&&r.id)byId[r.id]=r;});
+    d.resumes.forEach(c=>{
+      if(!c||!c.id)return;
+      const l=byId[c.id];
+      if(!l||(c.updatedAt||0)>(l.updatedAt||0)){byId[c.id]=c;changed=true;}
+    });
+    const merged=Object.values(byId).sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+    if(merged.length!==resumeLib.length||JSON.stringify(merged.map(x=>x.updatedAt))!==JSON.stringify(resumeLib.map(x=>x.updatedAt)))changed=true;
+    resumeLib=merged;
+    saveLib();
+  }
+  /* 证件照：云端 version 比本地变更新才覆盖 */
+  if(d.idPhoto){
+    const hasLocal=!!localStorage.getItem("idPhoto_v1");
+    if(!hasLocal||(d.version||0)>=localDirtyAt){
+      try{
+        localStorage.setItem("idPhoto_v1",d.idPhoto);
+        renderIdPhoto(d.idPhoto);
+        if(window.__idPhotoChanged)window.__idPhotoChanged();
+        changed=true;
+      }catch(e){}
+    }
+  }
+  /* 会员：取更晚的过期时间 */
+  if(d.memberUntil&&d.memberUntil>Date.now()&&d.memberUntil>(payInfo.expire||0)){
+    payInfo={type:(payInfo&&payInfo.type)||"month",expire:d.memberUntil};
+    try{localStorage.setItem(PAY_KEY,JSON.stringify(payInfo));}catch(e){}
+    updatePayBtn();changed=true;
+  }
+  if(changed){renderLib();renderSyncCard();}
+  return changed;
+}
+/* 静默拉取并合并（登录后 / 启动时）。多实例下内存存储可能漂移 → 最多重试 3 次 */
+async function autoPull(){
+  if(!(authInfo&&authInfo.token)||autoRestoring)return;
+  autoRestoring=true;
+  let d=null;
+  try{
+    for(let i=0;i<3;i++){
+      try{
+        const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),15000);
+        let resp;
+        try{
+          resp=await fetch(AI_WORKER_URL+"sync/download",{headers:{"Authorization":"Bearer "+authInfo.token},signal:ctrl.signal});
+        }finally{clearTimeout(t);}
+        const data=await resp.json();
+        d=data.ok?data.data:null;
+        if(d&&Array.isArray(d.resumes)&&d.resumes.length)break;
+        await new Promise(r=>setTimeout(r,2000)); /* 实例漂移/冷启动 → 稍后重试 */
+      }catch(e){await new Promise(r=>setTimeout(r,2000));}
+    }
+    if(!d||!Array.isArray(d.resumes)||!d.resumes.length)return;
+    const changed=mergeCloud(d);
+    if(d.updatedAt)lastSyncAt=d.updatedAt;
+    if(changed)toast("☁️ 已同步云端数据 · 简历 "+resumeLib.length+" 份");
+  }catch(e){console.warn("[autopull]",e.message);}
+  finally{autoRestoring=false;} /* 无论成功/提前返回都必须复位，否则自动备份被永久吞掉 */
 }
 
 /* ====================== 导出 ====================== */

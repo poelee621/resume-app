@@ -64,7 +64,7 @@ const fs = require("fs");
       try { const d = await r.json(); if (d.devCode) devCode = d.devCode; } catch (e) {}
     }
   });
-  await page.type("#loginPhone", "13912345678");
+  await page.type("#loginPhone", "139" + String(Math.floor(Math.random() * 1e8)).padStart(8, "0"));
   await page.click("#btnSendCode");
   await page.waitForTimeout(9000);
   const btnSendText = await page.evaluate(() => document.getElementById("btnSendCode").textContent);

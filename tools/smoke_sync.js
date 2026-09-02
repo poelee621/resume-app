@@ -27,7 +27,7 @@ const path = require("path");
   await page.waitForTimeout(300);
   await page.click("#btnOpenLogin");
   await page.waitForTimeout(300);
-  await page.type("#loginPhone", "13912345678");
+  await page.type("#loginPhone", "139" + String(Math.floor(Math.random() * 1e8)).padStart(8, "0"));
   await page.click("#btnSendCode");
   await page.waitForTimeout(9000);
   if (!devCode) { console.log("[login] ❌ 未拿到 devCode，中止"); await browser.close(); process.exit(1); }
