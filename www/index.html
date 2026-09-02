@@ -932,15 +932,15 @@ textarea:focus{border-color:var(--brand)}
         <!-- 账号登录 -->
         <section class="auth-card" id="authCard">
           <div id="authNotLogin">
-            <div class="auth-ic">📱</div>
+            <div class="auth-ic">🔐</div>
             <div class="auth-info">
-              <div class="t1">手机号登录</div>
+              <div class="t1">未登录</div>
               <div class="t2">登录后开启云端同步 · 简历 &amp; 会员跨设备可用</div>
-              <div class="btn primary" id="btnOpenLogin" style="margin-top:9px;font-size:12px;padding:9px 0">登录 / 注册</div>
+              <div class="btn primary" id="btnOpenLogin" style="margin-top:9px;font-size:12px;padding:9px 0">微信 / 手机号登录</div>
             </div>
           </div>
           <div id="authLoggedIn" style="display:none">
-            <div class="auth-ic" style="background:linear-gradient(135deg,#d8f5e5,#b9ecd0);color:#1f9d55">✔</div>
+            <div class="auth-ic" id="authLoggedInIcon" style="background:linear-gradient(135deg,#d8f5e5,#b9ecd0);color:#1f9d55">✔</div>
             <div class="auth-info">
               <div class="t1">已登录</div>
               <div class="t2" id="authPhone">138****8000</div>
@@ -988,8 +988,16 @@ textarea:focus{border-color:var(--brand)}
 <!-- 登录弹窗 -->
 <div class="mask" id="maskLogin">
   <div class="sheet">
-    <div class="tt">手机号登录</div>
-    <div class="st">未注册手机号验证后自动注册 · 登录后可云端同步</div>
+    <div class="tt">登录 / 注册</div>
+    <div class="st">登录后可云端同步 · 简历与会员跨设备可用</div>
+    <!-- 微信一键登录：仅 App 内且微信 SDK 可用时显示（装了插件 ≠ 能用，启动时探测） -->
+    <div class="btn" id="btnWxLogin" style="display:none;margin-bottom:2px;background:#07C160;color:#fff;font-weight:700">
+      <span style="font-size:15px">微信一键登录</span>
+    </div>
+    <div id="loginDivider" style="display:none;position:relative;text-align:center;margin:12px 0 10px">
+      <span style="position:absolute;left:0;right:0;top:50%;height:1px;background:var(--line,#e8eaed)"></span>
+      <span style="position:relative;background:var(--card,#fff);padding:0 10px;font-size:11px;color:var(--muted,#8a8f98)">或使用手机号</span>
+    </div>
     <input id="loginPhone" type="tel" maxlength="11" placeholder="请输入手机号" autocomplete="tel">
     <div class="code-row">
       <input id="loginCode" type="text" inputmode="numeric" maxlength="6" placeholder="6 位验证码" autocomplete="one-time-code">
@@ -1632,6 +1640,19 @@ $("btnPayOk").onclick=async()=>{
   if(!paySel){toast("请先选择套餐");return;}
   const btn=$("btnPayOk");
   btn.textContent="下单中…";btn.style.opacity=".6";btn.style.pointerEvents="none";
+  const next=payNext; /* 先存，hidePayMask 会清空 payNext */
+  /* Android 原生 + 微信插件就绪 → App 支付（直接拉起微信收银台，不用扫码） */
+  if(wxReady&&isAndroid()){
+    try{
+      await payByWechatApp(paySel,next,btn);
+      return;
+    }catch(e){
+      console.warn("[pay] App 支付不可用，回退扫码：",e&&e.message);
+      payNext=next; /* 还原，交给扫码流程 */
+      btn.textContent="确认支付";btn.style.opacity="1";btn.style.pointerEvents="auto";
+      toast("微信唤起失败 · 已切换扫码支付");
+    }
+  }
   try{
     /* 真支付：调 Worker 下单（Native 扫码，带 12s 超时，避免无限"下单中"） */
     const base=AI_WORKER_URL||"https://resume-api.1012425851.workers.dev/";
@@ -1659,6 +1680,40 @@ $("btnPayOk").onclick=async()=>{
   }
 };
 let pendingOrder=null,pollTimer=null;
+
+/* Android：微信 App 支付 —— 后端 /pay/app-create 下完单，用微信 SDK 拉起收银台。
+   关键：SDK 回调**不等于**最终支付结果（用户可能在微信里付完才切回来，也可能取消）。
+   一律以服务端 /pay/status 查微信支付订单为准，避免"扣了钱没解锁"或"没付却解锁"。 */
+async function payByWechatApp(plan,next,btn){
+  const base=AI_WORKER_URL||"https://resume-api.1012425851.workers.dev/";
+  const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),15000);
+  let resp;
+  try{
+    resp=await fetch(base+"pay/app-create",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({plan}),signal:ctrl.signal
+    });
+  }finally{clearTimeout(timer);}
+  const data=await resp.json();
+  if(!data.ok||!data.payParams) throw new Error(data.error||"APP 下单失败");
+  const p=data.payParams;
+  hidePayMask();
+  pendingOrder={tradeNo:data.out_trade_no,type:plan,payNext:next};
+  if(btn){btn.textContent="确认支付";btn.style.opacity="1";btn.style.pointerEvents="auto";}
+  toast("正在拉起微信支付…");
+  try{
+    /* 后端返回微信原生字段名（全小写），插件参数要求驼峰 —— 必须逐项映射 */
+    await Wechat.sendPaymentRequest({
+      partnerId:p.partnerid, prepayId:p.prepayid, nonceStr:p.noncestr,
+      timeStamp:p.timestamp, package:p.package, sign:p.sign
+    });
+  }catch(e){
+    /* -2 用户取消 / -1 签名或参数错：都不阻断，交给轮询判定真实结果 */
+    console.warn("[pay] sendPaymentRequest:",e&&e.message);
+  }
+  startPolling();
+}
+
 function showQr(codeUrl,type){
   /* 关闭付费面板（之前卡"下单中"就是这个没关） */
   hidePayMask();
@@ -2001,9 +2056,70 @@ function setupIdPhotoRef(){
   refresh();
 }
 
-/* ====================== 手机号登录（我的页） ====================== */
+/* ====================== 账号登录（手机号 / 微信一键登录） ====================== */
 const AUTH_KEY="auth_v1";
+const WX_APP_ID="wx1b23a4c563de2d70";
+/* iOS Universal Link：微信 SDK 初始化必填（不填 iOS 会崩）。开放平台后台要填同一个域名，
+   且该域名下需放 apple-app-site-association。官网是 GitHub Pages，天然支持静态文件。 */
+const WX_UNIVERSAL_LINK="https://poelee621.github.io/resume-app/";
 let authInfo=null;
+
+/* ---------- 微信原生插件（登录 + App 支付共用） ---------- */
+/* 铁律（踩过的坑）：装了 npm 包 ≠ 运行时可用。registerPlugin 在 Web 或未 cap sync 时
+   返回的是 Proxy，调用方法会 reject。必须实际探测；探测失败就隐藏入口，绝不静默降级。 */
+const Wechat = (window.Capacitor && window.Capacitor.registerPlugin)
+  ? window.Capacitor.registerPlugin("CapacitorWechat") : null;
+let wxReady=false;
+const isAndroid = () => !!(window.Capacitor && window.Capacitor.getPlatform && window.Capacitor.getPlatform()==="android");
+
+async function initWechat(){
+  if(!Wechat) return false;
+  try{
+    await Wechat.initialize({ appId: WX_APP_ID, universalLink: WX_UNIVERSAL_LINK });
+    const v = await Wechat.getPluginVersion();
+    wxReady = !!(v && v.version);
+    if(wxReady) console.log("[wx] 插件就绪 v" + v.version);
+  }catch(e){
+    wxReady=false;
+    console.warn("[wx] 微信插件不可用（Web 环境或未同步原生）：", e && e.message);
+  }
+  return wxReady;
+}
+
+/* 微信一键登录：SDK 拿 code → 后端换 openid → 后端签发自家 token */
+async function wxLogin(){
+  const btn=$("btnWxLogin");
+  if(!wxReady){ toast("当前环境不支持微信登录（需在 App 内使用）"); return; }
+  if(btn){btn.style.opacity=".6";btn.style.pointerEvents="none";btn.textContent="正在唤起微信…";}
+  try{
+    const r = await Wechat.auth({ scope:"snsapi_userinfo", state:"r"+Date.now() });
+    if(!r || !r.code) throw new Error("未取到微信授权 code");
+    if(btn)btn.textContent="登录中…";
+    const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),20000);
+    let resp;
+    try{
+      resp=await fetch(AI_WORKER_URL+"auth/wechat",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({code:r.code}),signal:ctrl.signal
+      });
+    }finally{clearTimeout(t);}
+    const data=await resp.json();
+    if(!data.ok){
+      /* 服务端未配置凭证是最常见原因，单独提示，别甩锅成"网络异常" */
+      if(data.code==="NOT_CONFIGURED") throw new Error("服务端微信凭证未配置，请联系客服");
+      throw new Error(data.error||"微信登录失败");
+    }
+    saveAuth({token:data.token,uid:data.uid,nick:data.nick||"",provider:"wechat",expiresAt:data.expiresAt});
+    closeLogin();toast("✅ 微信登录成功 · 云端同步就绪");
+    setTimeout(autoPull,800);
+  }catch(e){
+    /* 用户主动取消（微信返回 -2）不算错误，不打扰 */
+    const msg=String(e.message||e);
+    if(!/cancel|取消|-2/i.test(msg)) toast("微信登录失败："+msg);
+  }finally{
+    if(btn){btn.style.opacity="1";btn.style.pointerEvents="auto";btn.textContent="微信一键登录";}
+  }
+}
 function loadAuth(){
   try{const d=JSON.parse(localStorage.getItem(AUTH_KEY)||"null");if(d&&d.token)authInfo=d;}catch(e){}
 }
@@ -2017,7 +2133,19 @@ function renderAuth(){
   if(!nl||!li)return;
   if(authInfo&&authInfo.token){
     nl.style.display="none";li.style.display="";
-    const p=$("authPhone");if(p)p.textContent=authInfo.maskPhone||authInfo.phone;
+    const p=$("authPhone"),ic=$("authLoggedInIcon");
+    const isWx=authInfo.provider==="wechat";
+    if(p){
+      p.textContent = isWx
+        ? ("微信用户"+(authInfo.nick?" · "+authInfo.nick:""))
+        : (authInfo.maskPhone||authInfo.phone||"");
+    }
+    if(ic){
+      ic.textContent = isWx?"💬":"✔";
+      ic.style.background = isWx
+        ? "linear-gradient(135deg,#d9f7e4,#a9e9c4)"
+        : "linear-gradient(135deg,#d8f5e5,#b9ecd0)";
+    }
   }else{
     nl.style.display="";li.style.display="none";
   }
@@ -2104,14 +2232,19 @@ async function verifyAuth(){
     else setTimeout(autoPull,1500); /* token 有效 → 静默拉取云端合并 */
   }catch(e){}
 }
-function setupAuth(){
-  const open=$("btnOpenLogin"),send=$("btnSendCode"),ok=$("btnLoginOk"),out=$("btnLogout"),mask=$("maskLogin");
+async function setupAuth(){
+  const open=$("btnOpenLogin"),send=$("btnSendCode"),ok=$("btnLoginOk"),out=$("btnLogout"),mask=$("maskLogin"),wx=$("btnWxLogin"),dv=$("loginDivider");
   if(open)open.onclick=openLogin;
   if(send)send.onclick=sendLoginCode;
   if(ok)ok.onclick=doLogin;
   if(out)out.onclick=doLogout;
+  if(wx)wx.onclick=wxLogin;
   if(mask)mask.onclick=e=>{if(e.target===mask)closeLogin();};
   renderAuth();
+  /* 微信插件探测（异步）：只有真能用才亮出一键登录入口，避免"点了没反应" */
+  const ready=await initWechat();
+  if(wx)wx.style.display=ready?"":"none";
+  if(dv)dv.style.display=ready?"":"none";
 }
 
 /* ====================== 云端同步（登录后可用：简历/证件照/会员） ====================== */
@@ -2694,7 +2827,7 @@ window.addEventListener("resize",()=>{fitThumbs();fitPreviewImg();});
 setupIdPhoto();loadIdPhoto();
 /* 写简历页引用证件照 + 手机号登录 */
 setupIdPhotoRef();
-loadAuth();setupAuth();verifyAuth();
+loadAuth();setupAuth().catch(e=>console.warn("[auth] 初始化异常：",e));verifyAuth();
 /* 云端备份（登录后可用） */
 setupSync();
 </script>

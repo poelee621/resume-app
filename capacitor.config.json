@@ -4,5 +4,12 @@
   "webDir": "www",
   "server": {
     "androidScheme": "https"
+  },
+  "plugins": {
+    "CapacitorWechat": {
+      "appId": "wx1b23a4c563de2d70",
+      "universalLink": "https://poelee621.github.io/resume-app/",
+      "iosAppId": "wx1b23a4c563de2d70"
+    }
   }
 }

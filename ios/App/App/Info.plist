@@ -68,5 +68,25 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<!-- 微信 SDK：可拉起/可检测微信（不加 canOpenURL 直接失败） -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>weixin</string>
+		<string>weixinULAPI</string>
+	</array>
+	<!-- 微信回调 URL Scheme = 开放平台 APPID -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>weixin</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>wx1b23a4c563de2d70</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

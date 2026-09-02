@@ -1,6 +1,18 @@
+# node_modules 不进 git（部署时本地打包进 zip）
 node_modules/
-android/.gradle/
-android/app/build/
-android/build/
-ios/App/Pods/
-ios/App/App/public/
+server/node_modules/
+server/package-lock.json
+
+# 构建产物（zip 是打给 FC 上传的，每次部署都重新生成）
+server/resume-api.zip
+resume-api.zip
+
+# 临时探针（一次性验证脚本，不入版本控制）
+tools/t_ots*.mjs
+tools/ots_*.js
+
+# 编辑器/系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

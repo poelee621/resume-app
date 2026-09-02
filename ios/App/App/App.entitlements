@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 微信 SDK 在 iOS 上必须有 Universal Link，否则初始化即崩溃。
+	     这里声明的域名要与三处保持一致：
+	       1) 微信开放平台后台「Universal Link」填写 https://<该域名>/wx/
+	       2) 后端 /apple-app-site-association 返回的 appIDs
+	       3) 前端 WX_UNIVERSAL_LINK 常量
+	     在 Xcode 里：Signing & Capabilities → + Associated Domains（会自动写这里），
+	     并在 Build Settings → Code Signing Entitlements 指向本文件。 -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:resume-api-v-vzmoobafoo.cn-hangzhou.fcapp.run</string>
+	</array>
+</dict>
+</plist>
