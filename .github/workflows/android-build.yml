@@ -41,6 +41,21 @@ jobs:
       - name: Sync web to android
         run: npx cap sync android
 
+      - name: Warm up Gradle distribution (retry on network reset)
+        run: |
+          cd android
+          chmod +x gradlew
+          for i in 1 2 3 4; do
+            if ./gradlew --version >/dev/null 2>&1; then
+              echo "gradle distribution ready"
+              exit 0
+            fi
+            echo "gradle download failed, retry $i ..."
+            sleep 15
+          done
+          echo "::error::无法下载 Gradle 分发包（services.gradle.org 连接被重置），请重跑 workflow"
+          exit 1
+
       - name: Build debug APK
         run: |
           cd android

@@ -1941,7 +1941,7 @@ async function exportImage(){
   }
   document.body.removeChild(outer);
   showFullPreview(urls,"png");
-  toast("共 "+pages+" 页 · 点右上角「保存相册」存图");
+  toast("共 "+pages+" 页 · 点右上角「保存」存图");
 }
 /* 全屏预览（PNG 多页长按/保存 / PDF-HTML 滑动查看） */
 function showFullPreview(urls,type){
@@ -1954,7 +1954,7 @@ function showFullPreview(urls,type){
     ? `<iframe src="${list[0]}" style="width:100%;flex:1;border:none;background:#fff"></iframe>`
     : list.map(u=>`<img src="${u}" style="max-width:100%;height:auto;margin:12px 0;box-shadow:0 4px 24px rgba(0,0,0,.5)">`).join("");
   box.innerHTML=`<div style="position:sticky;top:0;width:100%;background:rgba(16,18,22,.92);color:#fff;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;font-size:13px;z-index:10;box-sizing:border-box">
-    <span>${type==="html"?"滑动查看简历排版 · 保存请用 Word/图片":"👆 点图片退出 · 长按图片<span style=\"color:#ff5d5d;font-weight:800\">存相册</span> · 共 "+list.length+" 页"}</span>
+    <span>${type==="html"?"滑动查看简历排版 · 保存请用 Word/图片":"👆 点图片退出 · 双指缩放 · 共 "+list.length+" 页"}</span>
     <span style="display:flex;gap:8px">
       <span id="fpSave" style="cursor:pointer;padding:6px 14px;background:#2ea86b;border-radius:8px;font-weight:700">保存</span>
       <span id="fpClose" style="cursor:pointer;padding:6px 14px;background:#6C5CE7;border-radius:8px;font-weight:700">完成</span>
@@ -2026,7 +2026,7 @@ function showFullPreview(urls,type){
       if(!nativeSave&&!nativeMedia){
         toast("⚠️ 原生保存功能未加载\n请长按图片 → 选「存储图像」",2600);
         saveBtn.style.background="#c0392b";
-        saveBtn.textContent="长按图片保存";
+        saveBtn.textContent="重试";
         setTimeout(()=>{saveBtn.style.background="#2ea86b";saveBtn.textContent="保存";},2600);
         return;
       }
@@ -2060,7 +2060,7 @@ function showFullPreview(urls,type){
         if(/denied|permission|Unauthorized|拒绝/i.test(msg)){
           toast("⚠️ 相册权限未开启\n请到系统设置 → 隐私 → 照片 允许本 App",3000);
         }else{
-          toast("保存失败："+msg+"\n可改用长按图片保存",3000);
+          toast("保存失败："+msg+"\n可改用 Word / PDF 导出",3000);
         }
         console.error("[saveImage]",e);
       }
@@ -2117,7 +2117,7 @@ async function exportImage(){
   }
   document.body.removeChild(outer);
   showFullPreview(urls,"png");
-  toast("共 "+pages+" 页 · 点图片退出 · 长按图片存相册");
+  toast("共 "+pages+" 页 · 点图片退出 · 双指缩放");
 }
 function exportPDF(){
   const m=docModel();
