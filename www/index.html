@@ -2116,6 +2116,14 @@ function setupAuth(){
 
 /* ====================== 云端同步（登录后可用：简历/证件照/会员） ====================== */
 let lastSyncAt=0;
+/* 本地快照兜底：每次备份成功留一份在本地，云端数据丢失时仍可恢复 */
+const CLOUD_SNAP_KEY="cloud_backup_v1";
+function saveCloudSnapshot(payload){
+  try{localStorage.setItem(CLOUD_SNAP_KEY,JSON.stringify({payload,at:Date.now()}));}catch(e){}
+}
+function loadCloudSnapshot(){
+  try{return JSON.parse(localStorage.getItem(CLOUD_SNAP_KEY)||"null");}catch(e){return null;}
+}
 function renderSyncCard(){
   const card=$("syncCard");if(!card)return;
   card.style.display=(authInfo&&authInfo.token)?"":"none";
@@ -2149,6 +2157,7 @@ async function syncUp(opts){
     const data=await resp.json();
     if(!data.ok)throw new Error(data.error||"备份失败");
     lastSyncAt=data.updatedAt||Date.now();
+    saveCloudSnapshot(payload); /* 本地留存一份，防云端实例重启丢失 */
     renderSyncCard();
     if(!silent)toast("✅ 已备份 "+resumeLib.length+" 份简历到云端");
   }catch(e){
@@ -2171,7 +2180,17 @@ async function syncDown(){
     if(!data.ok)throw new Error(data.error||"获取失败");
     const d=data.data;
     if(!d||!Array.isArray(d.resumes)||!d.resumes.length){
-      toast("云端暂无备份数据 · 先点「备份」");
+      /* 云端无数据（可能实例重启丢了）→ 用本地历史快照兜底 */
+      const snap=loadCloudSnapshot();
+      if(snap&&Array.isArray(snap.payload.resumes)&&snap.payload.resumes.length){
+        const at=new Date(snap.at).toLocaleString("zh-CN",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
+        if(confirm("云端暂无备份（服务器可能已重启）\n检测到本地历史备份 "+snap.payload.resumes.length+" 份（"+at+"）\n要恢复本地备份吗？")){
+          const changed=mergeCloud(snap.payload);
+          if(changed){lastSyncAt=snap.at;renderSyncCard();renderLib();toast("✅ 已从本地历史备份恢复 "+resumeLib.length+" 份简历");}
+        }
+      }else{
+        toast("云端暂无备份数据 · 先点「备份」");
+      }
       autoRestoring=false;
       btn.textContent="⬇️ 恢复";return;
     }

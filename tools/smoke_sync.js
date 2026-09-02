@@ -59,8 +59,13 @@ const path = require("path");
   await page.waitForTimeout(4000);
   const upToast = await page.evaluate(() => document.getElementById("toast").textContent);
   const syncHint = await page.evaluate(() => document.getElementById("syncHint").textContent);
-  console.log("[3] 备份结果:", upToast.includes("已备份") ? "✅ " + upToast : "❌ " + upToast);
+  console.log("[3] 备份结果:", /已备份|已同步云端数据/.test(upToast) ? "✅ " + upToast : "❌ " + upToast);
   console.log("[4] 备份时间显示:", /上次备份/.test(syncHint) ? "✅ " + syncHint : "❌ " + syncHint);
+  const snap = await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem("cloud_backup_v1") || "null");
+    return s ? { n: s.payload.resumes.length, hasPhoto: !!s.payload.idPhoto, member: s.payload.memberUntil > 0 } : null;
+  });
+  console.log("[4.5] 本地快照:", snap && snap.n === 2 && snap.hasPhoto && snap.member ? "✅ 已留存 (" + snap.n + " 份)" : "❌ " + JSON.stringify(snap));
 
   // 清空本地再恢复
   await page.evaluate(() => {
