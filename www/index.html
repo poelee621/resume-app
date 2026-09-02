@@ -2018,11 +2018,13 @@ function showFullPreview(urls,type){
   const saveBtn=box.querySelector("#fpSave");
   if(saveBtn){
     saveBtn.onclick=async()=>{
-      /* 原生相册插件可用性探测（iOS 若未 cap sync 则为 undefined，必须明确告知，不能静默降级） */
-      const nativeMedia=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.Media;
-      const canNative=!!(nativeMedia&&typeof nativeMedia.savePhoto==="function");
-      if(!canNative){
-        toast("⚠️ 原生相册插件未加载\n请长按图片 → 选「存储图像」",2600);
+      const P=(window.Capacitor&&window.Capacitor.Plugins)||{};
+      /* Android 专用：自研 ResumeSave 插件，MediaStore 直写 Pictures/AI简历工坊（免权限、相册必可见） */
+      const nativeSave=(P.ResumeSave&&typeof P.ResumeSave.savePng==="function")?P.ResumeSave:null;
+      /* iOS 专用：@capacitor-community/media（iOS 端 albumIdentifier 可选） */
+      const nativeMedia=(P.Media&&typeof P.Media.savePhoto==="function")?P.Media:null;
+      if(!nativeSave&&!nativeMedia){
+        toast("⚠️ 原生保存功能未加载\n请长按图片 → 选「存储图像」",2600);
         saveBtn.style.background="#c0392b";
         saveBtn.textContent="长按图片保存";
         setTimeout(()=>{saveBtn.style.background="#2ea86b";saveBtn.textContent="保存";},2600);
@@ -2030,10 +2032,29 @@ function showFullPreview(urls,type){
       }
       saveBtn.textContent="保存中…";
       try{
+        let nAlbum=0,nFile=0;
         for(let idx=0;idx<list.length;idx++){
-          await nativeMedia.savePhoto({path:list[idx],fileName:`简历_${curTpl}${list.length>1?"_第"+(idx+1)+"页":""}`});
+          const fname=`简历_${curTpl}${list.length>1?"_第"+(idx+1)+"页":""}`;
+          let done=false;
+          if(nativeSave){
+            try{
+              await nativeSave.savePng({dataUrl:list[idx],fileName:fname});
+              done=true;nAlbum++;
+            }catch(err){
+              const m=(err&&err.message)||String(err);
+              /* 老安卓（<10）无 MediaStore RELATIVE_PATH → 转下载兜底，不算失败 */
+              if(!/UNAVAILABLE|UNSUPPORTED_ANDROID_VERSION/.test(m)) throw err;
+            }
+          }
+          if(!done&&nativeMedia){
+            await nativeMedia.savePhoto({path:list[idx],fileName:fname});
+            done=true;nAlbum++;
+          }
+          if(!done){ await downloadDataUrl(list[idx],fname); nFile++; }
         }
-        toast("✅ 已保存到手机相册");
+        if(nAlbum&&nFile) toast("✅ "+nAlbum+" 页存入相册 · "+nFile+" 页存到 Download 目录",2800);
+        else if(nAlbum) toast("✅ 已保存到相册「AI简历工坊」",2200);
+        else toast("✅ 已保存到 Download 目录",2200);
       }catch(e){
         const msg=(e&&e.message)||String(e);
         if(/denied|permission|Unauthorized|拒绝/i.test(msg)){
@@ -2041,11 +2062,16 @@ function showFullPreview(urls,type){
         }else{
           toast("保存失败："+msg+"\n可改用长按图片保存",3000);
         }
-        console.error("[savePhoto]",e);
+        console.error("[saveImage]",e);
       }
       saveBtn.textContent="保存";
     };
   }
+}
+/* dataURL → blob → 触发下载（Android 由 MainActivity.setDownloadListener 接管存到 Download 目录） */
+async function downloadDataUrl(dataUrl,filename){
+  const blob=await (await fetch(dataUrl)).blob();
+  triggerDownload(blob,filename+".png");
 }
 /* 触发下载：a[download] + blob/dataURL（Android 真机由原生 setDownloadListener 接管存到 Download 目录） */
 function triggerDownload(blob,filename){

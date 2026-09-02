@@ -12,6 +12,8 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(android.os.Bundle savedInstanceState) {
+        /* 自定义插件必须在 super.onCreate() 之前注册，否则 Bridge 初始化时拿不到 */
+        registerPlugin(ResumeSavePlugin.class);
         super.onCreate(savedInstanceState);
         /* 真机下载：WebView 里 a[download]/blob 下载 → 保存到系统 Download 目录 */
         getBridge().getWebView().setDownloadListener(new DownloadListener() {
