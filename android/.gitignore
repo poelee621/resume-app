@@ -52,10 +52,22 @@ captures/
 # Comment next line if keeping position of elements in Navigation Editor is relevant for you
 .idea/navEditor.xml
 
-# Keystore files
-# Uncomment the following lines if you do not want to check your keystore files in.
-#*.jks
-#*.keystore
+# Keystore files (NEVER commit release signing material — see android/app/keys/.gitignore)
+*.jks
+*.keystore
+*.p12
+*.key
+*.crt
+
+# Local keystore credentials (gitignored, see keystore.example.properties for template)
+keystore.properties
+
+# Release signing material (PKCS#12, key, cert) — never commit
+app/keys/*.p12
+app/keys/*.key
+app/keys/*.crt
+# but keep the .gitkeep so the directory is preserved
+!app/keys/.gitkeep
 
 # External native build folder generated in Android Studio 2.2 and later
 .externalNativeBuild
