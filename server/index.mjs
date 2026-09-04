@@ -8,7 +8,7 @@
  *   WX_CERT_SERIAL     商户证书序列号
  *   WX_API_V3_KEY      APIv3 密钥（32 位）
  *   WX_PRIVATE_KEY     商户 API 私钥（PEM，\n 要换成真实换行，可粘贴整段）
- *   WX_APP_ID          公众号 AppID
+ *   WX_APP_ID          公众号 AppID（H5 支付 + Native 扫码下单用；未配置时 /pay/create、/pay/h5-create 不可用）
  *   WX_APP_APPID       微信开放平台 AppID（APP 支付专用，与公众号 AppID 不同；未配置时 /pay/app-create 返回明确错误）
  *   WX_APP_SECRET      微信开放平台 AppSecret（微信一键登录换 openid 用，未配置时 /auth/wechat 返回明确错误）
  *   PORT               自定义运行时监听端口，默认 9000
@@ -19,7 +19,10 @@
  * 路由：
  *   POST /chat        → DeepSeek 代理
  *   POST /pay/create  → 微信支付 Native 下单（返回 code_url + out_trade_no）
- *   POST /pay/app-create → 微信支付 APP 下单（返回调起参数 payParams，App 内直接拉起微信收银台）
+ *   POST /pay/h5-create → 微信支付 H5 下单（返回 h5_url，App/浏览器打开即唤起微信收银台。
+ *                         用公众号 AppID，不需要 APPID 上架 + 软著，是绕开 APP 支付审核的主通道）
+ *   POST /pay/app-create → 微信支付 APP 下单（返回调起参数 payParams，App 内直接拉起微信收银台。
+ *                          需移动应用已上架主流商店 + 软著，审核严格；未开通时前端自动降级到 H5/扫码）
  *   GET  /pay/status  → 查微信支付订单状态（out_trade_no）
  *   POST /pay/callback→ 微信支付回调（无状态：以查询 API 为准）
  *   POST /auth/send-code → 手机号验证码（dev 模式直接返回 devCode，配 SMS_WEBHOOK 后走 webhook）
@@ -191,6 +194,50 @@ async function payAppCreate(plan, origin) {
       sign,
     },
   };
+}
+
+/* ---------------- 微信支付：H5 下单（公众号 AppID，App 内/浏览器唤起微信收银台） ----------------
+   为什么需要它：APP 支付（/pay/app-create）要求 APPID 所属移动应用已上架主流商店 + 提供
+   计算机软件著作权登记证书，审核 2-6 个月。H5 支付走公众号 AppID（ENV.WX_APP_ID），
+   商户号侧只需开通「H5 支付」产品，不需要软著、不需要上架，1-3 个工作日即可。
+   能力等价：用户在 App 内点付费 → 打开 h5_url → 系统唤起微信 → 支付 → 回 App 轮询解锁。
+   限制：iOS 上 Apple 审核条款 3.1.1 禁止 App 内非 IAP 购买数字商品，故 iOS 端仍走扫码/IAP。 */
+async function payH5Create(plan, origin, clientIp, sceneType) {
+  const prices = { once: 990, month: 4900, year: 8900 }; // 分
+  const price = prices[plan];
+  if (!price) return { ok: false, error: "未知套餐" };
+  if (!ENV.WX_APP_ID) return { ok: false, code: "NOT_CONFIGURED", error: "未配置公众号 AppID（WX_APP_ID），H5 支付不可用" };
+  const desc = { once: "单次解锁", month: "包月会员", year: "体验包年" }[plan];
+  const ts = Date.now();
+  const outTradeNo = `RS${ts}${Math.floor(Math.random() * 10000)}`;
+  /* scene_info.h5_info.type 严格三选一，大小写敏感：iOS / Android / Wap */
+  const type = ["iOS", "Android", "Wap"].includes(sceneType) ? sceneType : "Wap";
+  const body = {
+    appid: ENV.WX_APP_ID,
+    mchid: ENV.WX_MCH_ID,
+    description: `简历-${desc}`,
+    out_trade_no: outTradeNo,
+    notify_url: `${origin}/pay/callback`,
+    amount: { total: price, currency: "CNY" },
+    scene_info: {
+      payer_client_ip: clientIp || "127.0.0.1",
+      h5_info: { type },
+    },
+  };
+  const bodyStr = JSON.stringify(body);
+  const resp = await fetch("https://api.mch.weixin.qq.com/v3/pay/transactions/h5", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: await wxAuth("POST", "/v3/pay/transactions/h5", bodyStr),
+    },
+    body: bodyStr,
+  });
+  const data = await resp.json();
+  if (!resp.ok)
+    return { ok: false, status: resp.status, code: data?.code, error: data?.message || "H5 下单失败" };
+  return { ok: true, out_trade_no: outTradeNo, h5_url: data.h5_url, scene_type: type };
 }
 
 /* ---------------- 登录：自签名验证码 challenge + 无状态 token（不依赖实例内存） ---------------- */
@@ -472,6 +519,10 @@ async function handleEvent(evt) {
     : "";
   const host = getHeader(evt.headers, "host") || "resume-api";
   const origin = `https://${host}`;
+  /* H5 支付必传 payer_client_ip（用户端真实 IP，不是服务器 IP）。
+     FC 经多层代理，取 x-forwarded-for 第一个；拿不到再退 x-real-ip。 */
+  const xff = getHeader(evt.headers, "x-forwarded-for") || "";
+  const clientIp = (xff.split(",")[0] || "").trim() || getHeader(evt.headers, "x-real-ip") || "";
   const q = evt.queryParameters || evt.queryStringParameters || {};
   const getQuery = (k) => q[k] || q[k.toLowerCase()];
 
@@ -509,6 +560,11 @@ async function handleEvent(evt) {
     if (urlPath === "/pay/app-create" && method === "POST") {
       const b = body ? JSON.parse(body) : {};
       return json(await payAppCreate(b.plan, origin));
+    }
+    if (urlPath === "/pay/h5-create" && method === "POST") {
+      const b = body ? JSON.parse(body) : {};
+      /* scene 由客户端传（iOS/Android/Wap）；不传默认 Wap */
+      return json(await payH5Create(b.plan, origin, clientIp, b.scene));
     }
     if (urlPath === "/pay/status" && method === "GET") {
       const outTradeNo = getQuery("out_trade_no") || getQuery("outTradeNo");

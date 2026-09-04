@@ -1641,13 +1641,16 @@ $("btnPayOk").onclick=async()=>{
   const btn=$("btnPayOk");
   btn.textContent="下单中…";btn.style.opacity=".6";btn.style.pointerEvents="none";
   const next=payNext; /* 先存，hidePayMask 会清空 payNext */
-  /* Android 原生 + 微信插件就绪 → App 支付（直接拉起微信收银台，不用扫码） */
-  if(wxReady&&isAndroid()){
+  /* App 内 → H5 支付：系统浏览器打开 h5_url → 唤起微信收银台 → 回 App 轮询解锁。
+     为什么不用 APP 支付（/pay/app-create）：微信要求移动应用已上架主流商店 + 提供软件著作权
+     证书，2026-09-03 实测被拒，链路 2-6 个月。H5 支付走公众号 AppID，商户号侧只需开通
+     「H5 支付」产品（1-3 工作日），且不依赖微信 SDK 插件，不存在"插件静默功能残"的风险。 */
+  if(H5_PAY_ON_IOS||isAndroid()){
     try{
-      await payByWechatApp(paySel,next,btn);
+      await payByWechatH5(paySel,next,btn);
       return;
     }catch(e){
-      console.warn("[pay] App 支付不可用，回退扫码：",e&&e.message);
+      console.warn("[pay] H5 支付不可用，回退扫码：",e&&e.message);
       payNext=next; /* 还原，交给扫码流程 */
       btn.textContent="确认支付";btn.style.opacity="1";btn.style.pointerEvents="auto";
       toast("微信唤起失败 · 已切换扫码支付");
@@ -1740,6 +1743,26 @@ function showQr(codeUrl,type){
   box.querySelector("#qrClose").onclick=()=>{box.remove();clearInterval(pollTimer);};
   startPolling();
 }
+/* 支付成功后的统一落账（轮询命中 / 浏览器关闭回调 共用，避免两处逻辑漂移） */
+function settlePaid(){
+  if(!pendingOrder)return;
+  clearInterval(pollTimer);
+  const nm={once:"单次解锁",month:"包月会员",year:"体验包年"}[pendingOrder.type];
+  const qrMask=document.getElementById("qrMask");if(qrMask)qrMask.remove();
+  payFor(pendingOrder.type);hidePayMask();toast("✅ 支付成功 · 已开通"+nm);
+  if(pendingOrder.payNext){const fn=pendingOrder.payNext;pendingOrder.payNext=null;setTimeout(fn,200);}
+  pendingOrder=null;
+}
+/* 单次查单（用户从微信切回 App 时立刻查一次，不必等下一个 3s 轮询周期） */
+async function checkOnce(){
+  if(!pendingOrder)return;
+  try{
+    const base=AI_WORKER_URL||"https://resume-api.1012425851.workers.dev/";
+    const resp=await fetch(base+"pay/status?out_trade_no="+pendingOrder.tradeNo);
+    const data=await resp.json();
+    if(data.ok&&data.paid)settlePaid();
+  }catch(e){}
+}
 async function startPolling(){
   clearInterval(pollTimer);
   pollTimer=setInterval(async()=>{
@@ -1748,16 +1771,53 @@ async function startPolling(){
       const base=AI_WORKER_URL||"https://resume-api.1012425851.workers.dev/";
       const resp=await fetch(base+"pay/status?out_trade_no="+pendingOrder.tradeNo);
       const data=await resp.json();
-      if(data.ok&&data.paid){
-        clearInterval(pollTimer);
-        const nm={once:"单次解锁",month:"包月会员",year:"体验包年"}[pendingOrder.type];
-        const qrMask=document.getElementById("qrMask");if(qrMask)qrMask.remove();
-        payFor(pendingOrder.type);hidePayMask();toast("✅ 支付成功 · 已开通"+nm);
-        if(pendingOrder.payNext){const fn=pendingOrder.payNext;pendingOrder.payNext=null;setTimeout(fn,200);}
-        pendingOrder=null;
-      }
+      if(data.ok&&data.paid)settlePaid();
     }catch(e){}
   },3000);
+}
+
+/* ⚠️ 上架 App Store 前必须改成 false 并接入 Apple IAP。
+   Apple 审核条款 3.1.1：App 内购买数字商品（解锁导出次数/会员）必须走 IAP，
+   用 H5 支付会被拒。TestFlight 内测 / 企业分发 / Android 不受此限。 */
+const H5_PAY_ON_IOS=true;
+
+/* H5 支付（主通道）—— 打开 h5_url 唤起微信收银台，不依赖微信 SDK。
+   链路：后端用公众号 AppID 调 /v3/pay/transactions/h5 拿 h5_url
+        → 系统浏览器（Android: Chrome Custom Tabs / iOS: SFSafariViewController）打开
+        → 微信 scheme 唤起收银台 → 用户支付 → 切回 App → 轮询 /pay/status 落账。
+   为什么用系统浏览器而不是 WebView 直接跳：weixin:// 自定义 scheme 在 App 内 WebView
+   常被 WebChromeClient 拦截或静默吞掉，Custom Tabs 由系统处理 scheme，唤起成功率高得多，
+   且能监听 browserFinished 事件，用户点返回时立刻查单。 */
+async function payByWechatH5(plan,next,btn){
+  const base=AI_WORKER_URL||"https://resume-api.1012425851.workers.dev/";
+  /* 插件可用性探测：装了 npm 包 ≠ 运行时可用（Capacitor 静默功能残，血泪教训）。
+     探测失败必须抛错让上层回退扫码，绝不能静默什么都不做。 */
+  const Browser=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.Browser;
+  if(!Browser||typeof Browser.open!=="function")
+    throw new Error("Browser 插件未加载（需 npx cap sync）");
+  const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),15000);
+  let resp;
+  try{
+    resp=await fetch(base+"pay/h5-create",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({plan,scene:isAndroid()?"Android":"iOS"}),signal:ctrl.signal
+    });
+  }finally{clearTimeout(timer);}
+  const data=await resp.json();
+  if(!data.ok||!data.h5_url) throw new Error(data.error||"H5 下单失败");
+  hidePayMask();
+  pendingOrder={tradeNo:data.out_trade_no,type:plan,payNext:next};
+  if(btn){btn.textContent="确认支付";btn.style.opacity="1";btn.style.pointerEvents="auto";}
+  toast("正在拉起微信支付…");
+  /* 监听浏览器关闭 → 用户付完切回 App 时立刻查单（不等 3s 轮询周期） */
+  try{
+    if(typeof Browser.addListener==="function")
+      await Browser.addListener("browserFinished",()=>setTimeout(checkOnce,600));
+  }catch(e){console.warn("[pay] browserFinished 监听失败：",e&&e.message);}
+  try{ await Browser.open({url:data.h5_url}); }
+  catch(e){ throw new Error("打开支付页失败："+((e&&e.message)||e)); }
+  /* 打开成功后启动轮询：用户可能在微信里付完直接切回，不一定触发关闭事件 */
+  startPolling();
 }
 $("maskPay").onclick=e=>{if(e.target===$("maskPay"))hidePayMask();};
 $("maskName").onclick=e=>{if(e.target===$("maskName"))$("maskName").classList.remove("show");};
