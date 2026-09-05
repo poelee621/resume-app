@@ -41,6 +41,17 @@ jobs:
       - name: Sync web to android
         run: npx cap sync android
 
+      - name: Restore release keystore (from Actions secrets)
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_B64 }}" ]; then
+            echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > android/app/keys/release.p12
+            printf '%s\n' "${{ secrets.ANDROID_KEYSTORE_PROPERTIES }}" > android/keystore.properties
+            echo "keystore restored ($(wc -c < android/app/keys/release.p12) bytes)"
+          else
+            echo "secrets missing → assembleRelease falls back to debug signing (NOT store-ready)"
+          fi
+
       - name: Warm up Gradle distribution (retry on network reset)
         run: |
           cd android
@@ -56,27 +67,45 @@ jobs:
           echo "::error::无法下载 Gradle 分发包（services.gradle.org 连接被重置），请重跑 workflow"
           exit 1
 
-      - name: Build debug APK
+      - name: Build APKs (release + debug)
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleRelease assembleDebug --no-daemon
 
-      - name: Upload APK
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: resume-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: resume-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
+          if-no-files-found: error
 
       - name: Publish GitHub Release (官网下载入口)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="apk-$(date -u +%Y%m%d-%H%M%S)"
+          # 有真 release 签名包则发布它（上架同款），否则回退 debug
+          if [ -s android/app/keys/release.p12 ]; then
+            APK="android/app/build/outputs/apk/release/app-release.apk"
+            KIND="release"
+          else
+            APK="android/app/build/outputs/apk/debug/app-debug.apk"
+            KIND="debug"
+          fi
+          echo "publishing $KIND APK → $APK"
           gh release create "$TAG" \
-            "android/app/build/outputs/apk/debug/app-debug.apk" \
+            "$APK" \
             --repo "${{ github.repository }}" \
-            --title "AI简历工坊 Android 版（$TAG）" \
-            --notes "AI简历工坊 Android 安装包（debug 构建）。官网下载入口：https://poelee621.github.io/resume-app/" \
+            --title "AI简历工坊 Android 版（$TAG · $KIND）" \
+            --notes "AI简历工坊 Android 安装包（$KIND 构建）。官网下载入口：https://poelee621.github.io/resume-app/" \
             --latest 2>/dev/null || echo "release already exists"
