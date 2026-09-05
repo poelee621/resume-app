@@ -1,4 +1,5 @@
 name: android-build
+# Release signing secrets enabled: 2026-09-05（ANDROID_KEYSTORE_B64 + ANDROID_KEYSTORE_PROPERTIES）
 on:
   workflow_dispatch:
   push:
