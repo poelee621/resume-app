@@ -68,10 +68,21 @@ jobs:
           exit 1
 
       - name: Build APKs (release + debug)
+        shell: bash
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease assembleDebug --no-daemon
+          set -o pipefail
+          ./gradlew assembleRelease assembleDebug --no-daemon 2>&1 | tee /tmp/gradle-build.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload Gradle build log (on failure, for diagnosis)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-build-log
+          path: /tmp/gradle-build.log
+          retention-days: 7
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
