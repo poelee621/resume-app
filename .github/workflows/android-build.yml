@@ -14,7 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      issues: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -84,23 +83,6 @@ jobs:
           name: gradle-build-log
           path: /tmp/gradle-build.log
           retention-days: 7
-
-      - name: Report build failure to issue (temporary diagnosis)
-        if: ${{ failure() }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          {
-            echo "## CI build failed — commit ${{ github.sha }}"
-            echo ""
-            echo '```'
-            tail -120 /tmp/gradle-build.log 2>/dev/null || echo "(no gradle log)"
-            echo '```'
-          } > /tmp/fail-note.md
-          gh issue create --repo "${{ github.repository }}" \
-            --title "CI build failed $(date -u +%Y%m%d-%H%M%S)" \
-            --body-file /tmp/fail-note.md || echo "issue create failed"
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
